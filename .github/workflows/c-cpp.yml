@@ -34,9 +34,10 @@ jobs:
             echo "✅ SDK Array Bounds patched successfully."
           fi
 
-          # 4. 🛠️ إصلاح خطأ Cast to 'const char *' في الـ SDK تلقائياً
+          # 4. 🛠️ إصلاح جميع أخطاء Cast to 'const char *' في الـ SDK تلقائياً
+          # هذا السطر يغطي a.X, a.Y, a.Z و أي متغير مشابه
           if [ -f "SDK/PUBGM_SAQER_CoreUObject_structs.hpp" ]; then
-            sed -i '' 's/(const char\*)(int)a.Z;/(const char*)(uintptr_t)a.Z;/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
+            sed -i '' 's/(const char\*)(int)/(const char*)(uintptr_t)/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
             echo "✅ SDK Cast to 'const char *' patched successfully."
           fi
           
@@ -74,10 +75,12 @@ jobs:
           
           echo "🚀 Compiling..."
           
+          # إضافة flag لتجاهل التحذيرات كأخطاء إذا لزم الأمر (-Wno-error)
           clang++ -arch arm64 -dynamiclib -std=c++17 \
             -isysroot "$SDK_PATH" \
             -miphoneos-version-min=14.0 \
             -fobjc-arc \
+            -Wno-error \
             \
             -I. \
             -I./SDK \
