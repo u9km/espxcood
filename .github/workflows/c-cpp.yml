@@ -30,21 +30,25 @@ jobs:
           
           # 3. 🛠️ إصلاح خطأ Array Bounds في الـ SDK تلقائياً
           if [ -f "SDK/PUBGM_SAQER_CoreUObject_structs.hpp" ]; then
-            # نغير return buffer[25] إلى return buffer[24] أو نزيد حجم المصفوفة. 
-            # الأفضل هنا زيادة حجم المصفوفة في التعريف لتفادي فقدان بيانات.
             sed -i '' 's/char buffer\[25\];/char buffer\[26\];/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
-            echo "✅ SDK patched successfully."
+            echo "✅ SDK Array Bounds patched successfully."
+          fi
+
+          # 4. 🛠️ إصلاح خطأ Cast to 'const char *' في الـ SDK تلقائياً
+          if [ -f "SDK/PUBGM_SAQER_CoreUObject_structs.hpp" ]; then
+            sed -i '' 's/(const char\*)(int)a.Z;/(const char*)(uintptr_t)a.Z;/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
+            echo "✅ SDK Cast to 'const char *' patched successfully."
           fi
           
-          # 4. تحميل ملفات fishhook
+          # 5. تحميل ملفات fishhook
           curl -L -o fishhook.h https://raw.githubusercontent.com/facebook/fishhook/master/fishhook.h
           
-          # 5. تحميل مكتبة Dobby
+          # 6. تحميل مكتبة Dobby
           curl -L -o dobby.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
           unzip -q dobby.zip
           mv Dobby-master Dobby
 
-          # 6. خدعة الجلبريك (Fake Substrate Bridge + MSFindSymbol)
+          # 7. خدعة الجلبريك (Fake Substrate Bridge + MSFindSymbol)
           cat <<EOF > substrate.h
           #ifndef SUBSTRATE_H
           #define SUBSTRATE_H
