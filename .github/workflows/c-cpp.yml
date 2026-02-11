@@ -62,9 +62,13 @@ jobs:
             sed -i '' 's/(const char\*)(int)/(const char*)(uintptr_t)/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
           fi
           
-          # 8. 🛠️ إصلاح خطأ Returning address of local temporary object
+          # 8. 🛠️ 🛠️ إصلاح خطأ Returning address of local temporary object (الجديد) 🛠️ 🛠️
           if [ -f "SDK/PUBGM_SAQER_Basic.hpp" ]; then
-            sed -i '' 's/return convert.to_bytes(std::u16string(Data, Data + Count)).c_str();/{ std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/g' SDK/PUBGM_SAQER_Basic.hpp
+            # نستخدم static std::string لتجنب إتلاف الذاكرة
+            sed -i '' 's/{ std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/{ static std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/g' SDK/PUBGM_SAQER_Basic.hpp
+            # إصلاح الحالة التي لم يتم فيها التعديل سابقاً
+            sed -i '' 's/return convert.to_bytes(std::u16string(Data, Data + Count)).c_str();/{ static std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/g' SDK/PUBGM_SAQER_Basic.hpp
+            echo "✅ SDK Returning address patched successfully with static."
           fi
 
       - name: Compile Project
@@ -76,7 +80,6 @@ jobs:
           
           echo "🚀 Compiling..."
           
-          # تجميع كامل مع إضافة المجلدات والـ Frameworks
           clang++ -arch arm64 -dynamiclib -std=c++17 \
             -isysroot "$SDK_PATH" \
             -miphoneos-version-min=14.0 \
