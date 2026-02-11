@@ -1,0 +1,78 @@
+name: Build Project from ZIPs (Non-JB)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Prepare Files (Unzip & Bridge)
+        run: |
+          mkdir -p build
+          
+          # 1. فك ضغط المجلدات الثلاثة
+          # تأكد أنك رفعت الملفات باسم esp.zip, kittymemory.zip, sdk.zip
+          if [ -f "esp.zip" ]; then unzip -q esp.zip; fi
+          if [ -f "kittymemory.zip" ]; then unzip -q kittymemory.zip; fi
+          if [ -f "sdk.zip" ]; then unzip -q sdk.zip; fi
+          
+          # 2. تحميل مكتبة Dobby (بديل Substrate)
+          curl -L -o dobby.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
+          unzip -q dobby.zip
+          mv Dobby-master Dobby
+
+          # 3. خدعة الجلبريك (Fake Substrate Bridge)
+          cat <<EOF > substrate.h
+          #ifndef SUBSTRATE_H
+          #define SUBSTRATE_H
+          #include "Dobby/include/dobby.h"
+          #include <mach-o/dyld.h>
+          
+          #define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)
+          #endif
+          EOF
+
+      - name: Compile Project
+        run: |
+          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          
+          echo "🔍 Searching for source files..."
+          
+          # البحث عن ملفات cpp و mm و c في المجلدات المفكوكة
+          SOURCES=$(find . -name "*.cpp" -o -name "*.mm" -o -name "*.c" | grep -v "Dobby/tests" | grep -v "Dobby/example")
+          
+          echo "🚀 Compiling..."
+          
+          clang++ -arch arm64 -dynamiclib -std=c++17 \
+            -isysroot "$SDK_PATH" \
+            -miphoneos-version-min=14.0 \
+            -fobjc-arc \
+            \
+            -I. \
+            -I./SDK \
+            -I./KittyMemory \
+            -I./ESP \
+            -IDobby/include \
+            \
+            $SOURCES \
+            \
+            -framework Foundation \
+            -framework UIKit \
+            -framework CoreGraphics \
+            -framework QuartzCore \
+            -framework Security \
+            \
+            -o build/ShadowCheats.dylib
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShadowCheats_dylib
+          path: build/ShadowCheats.dylib
