@@ -1,4 +1,4 @@
-name: Build Project from ZIPs (Non-JB)
+name: Build Full iOS Project (Non-JB)
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Prepare Files (Unzip & Bridge)
+      - name: Prepare Files (Unzip, Patch & Bridge)
         run: |
           mkdir -p build
           
@@ -23,12 +23,18 @@ jobs:
           if [ -f "kittymemory.zip" ]; then unzip -q kittymemory.zip; fi
           if [ -f "sdk.zip" ]; then unzip -q sdk.zip; fi
           
-          # 2. تحميل مكتبة Dobby (بديل Substrate)
+          # 2. 🛠️ إصلاح خطأ sprintf في KittyMemory.cpp تلقائياً
+          if [ -f "KittyMemory/KittyMemory.cpp" ]; then
+            sed -i '' 's/sprintf(&buffer\[i \* 2\], "%02X", (unsigned char) temp\[i\]);/snprintf(\&buffer\[i \* 2\], 3, "%02X", (unsigned char) temp\[i\]);/g' KittyMemory/KittyMemory.cpp
+            echo "✅ KittyMemory.cpp patched successfully."
+          fi
+          
+          # 3. تحميل مكتبة Dobby (بديل Substrate للـ Non-JB)
           curl -L -o dobby.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
           unzip -q dobby.zip
           mv Dobby-master Dobby
 
-          # 3. خدعة الجلبريك (Fake Substrate Bridge)
+          # 4. خدعة الجلبريك (Fake Substrate Bridge)
           cat <<EOF > substrate.h
           #ifndef SUBSTRATE_H
           #define SUBSTRATE_H
@@ -44,12 +50,12 @@ jobs:
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           
           echo "🔍 Searching for source files..."
-          
           # البحث عن ملفات cpp و mm و c في المجلدات المفكوكة
           SOURCES=$(find . -name "*.cpp" -o -name "*.mm" -o -name "*.c" | grep -v "Dobby/tests" | grep -v "Dobby/example")
           
           echo "🚀 Compiling..."
           
+          # تجميع الملفات باستخدام SDK iOS
           clang++ -arch arm64 -dynamiclib -std=c++17 \
             -isysroot "$SDK_PATH" \
             -miphoneos-version-min=14.0 \
@@ -59,6 +65,7 @@ jobs:
             -I./SDK \
             -I./KittyMemory \
             -I./ESP \
+            -I./ESP/imgui \
             -IDobby/include \
             \
             $SOURCES \
