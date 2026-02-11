@@ -1,9 +1,80 @@
-- name: Compile Project
+name: Build Project from ZIPs (Non-JB)
+
+"on":
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Prepare Files (Unzip, Patch & Bridge)
+        run: |
+          set -e
+          mkdir -p build
+          
+          # 1. فك ضغط المجلدات الثلاثة
+          if [ -f "esp.zip" ]; then unzip -o -q esp.zip; fi
+          if [ -f "kittymemory.zip" ]; then unzip -o -q kittymemory.zip; fi
+          if [ -f "sdk.zip" ]; then unzip -o -q sdk.zip; fi
+          
+          # 2. تحميل مكتبة Dobby
+          curl -L -o dobby.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
+          unzip -o -q dobby.zip
+          mv -f Dobby-master Dobby
+
+          # 3. تحميل fishhook
+          curl -L -o fishhook.h https://raw.githubusercontent.com/facebook/fishhook/master/fishhook.h
+          
+          # 4. Fake Substrate Bridge
+          cat <<EOF > substrate.h
+          #ifndef SUBSTRATE_H
+          #define SUBSTRATE_H
+          #include "Dobby/include/dobby.h"
+          #include <mach-o/dyld.h>
+          #include <dlfcn.h>
+          
+          #define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)
+          
+          static inline void* MSFindSymbol(void* image, const char* name) {
+              return dlsym(RTLD_DEFAULT, name);
+          }
+          
+          #endif
+          EOF
+
+          # 5. إصلاح sprintf
+          if [ -f "KittyMemory/KittyMemory.cpp" ]; then
+            sed -i '' 's/sprintf(&buffer\[i \* 2\], "%02X", (unsigned char) temp\[i\]);/snprintf(\&buffer\[i \* 2\], 3, "%02X", (unsigned char) temp\[i\]);/g' KittyMemory/KittyMemory.cpp
+          fi
+          
+          # 6. إصلاح Buffer
+          if [ -f "SDK/PUBGM_SAQER_CoreUObject_structs.hpp" ]; then
+            sed -i '' 's/char buffer\[25\];/char buffer\[26\];/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
+          fi
+
+          # 7. إصلاح Cast
+          if [ -f "SDK/PUBGM_SAQER_CoreUObject_structs.hpp" ]; then
+            sed -i '' 's/(const char\*)(int)/(const char*)(uintptr_t)/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
+          fi
+          
+          # 8. إصلاح returning local temporary
+          if [ -f "SDK/PUBGM_SAQER_Basic.hpp" ]; then
+            sed -i '' 's/{ std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/{ static std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/g' SDK/PUBGM_SAQER_Basic.hpp
+            sed -i '' 's/return convert.to_bytes(std::u16string(Data, Data + Count)).c_str();/{ static std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/g' SDK/PUBGM_SAQER_Basic.hpp
+          fi
+
+      - name: Compile Project
         run: |
           set -e
           
           mkdir -p build
-          
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           
           echo "🔍 Searching for source files..."
@@ -15,10 +86,7 @@
             echo "❌ No source files found!"
             exit 1
           fi
-          
-          echo "📂 Source files:"
-          echo "$SOURCES"
-          
+
           echo "🚀 Compiling..."
           
           clang++ -v \
@@ -28,9 +96,6 @@
             -fobjc-arc \
             -Wno-error \
             -Wno-deprecated-declarations \
-            -Wno-unused-variable \
-            -Wno-unused-function \
-            -Wno-unused-but-set-variable \
             -ferror-limit=0 \
             \
             -I. \
@@ -51,5 +116,9 @@
             -ldl \
             \
             -o build/ShadowCheats.dylib
-          
-          echo "✅ Build Finished Successfully"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShadowCheats_dylib
+          path: build/ShadowCheats.dylib
