@@ -1,47 +1,43 @@
-name: Build iOS Dynamic Library
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [ "main" ]
-
-jobs:
-  build:
-    runs-on: macos-14
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Compile
+- name: Compile Project
         run: |
           set -e
-          mkdir -p build # إنشاء مجلد للمخرجات
-
+          
+          mkdir -p build
+          
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
-
+          
           echo "🔍 Searching for source files..."
-          # استثناء ملفات الـ examples الخاصة بالمكتبات الخارجية
-          SOURCES=$(find . -name "*.cpp" -o -name "*.mm" -o -name "*.c" | grep -v "Dobby/example" | grep -v "Dobby/tests")
+          SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
+            | grep -v "Dobby/tests" \
+            | grep -v "Dobby/example")
 
           if [ -z "$SOURCES" ]; then
             echo "❌ No source files found!"
             exit 1
           fi
-
+          
+          echo "📂 Source files:"
+          echo "$SOURCES"
+          
           echo "🚀 Compiling..."
-
-          clang++ \
-            -arch arm64 \
-            -dynamiclib \
-            -std=c++17 \
+          
+          clang++ -v \
+            -arch arm64 -dynamiclib -std=c++17 \
             -isysroot "$SDK_PATH" \
             -miphoneos-version-min=14.0 \
             -fobjc-arc \
+            -Wno-error \
+            -Wno-deprecated-declarations \
+            -Wno-unused-variable \
+            -Wno-unused-function \
+            -Wno-unused-but-set-variable \
+            -ferror-limit=0 \
             \
             -I. \
+            -I./SDK \
             -I./KittyMemory \
             -I./ESP \
+            -IDobby/include \
             \
             $SOURCES \
             \
@@ -51,10 +47,9 @@ jobs:
             -framework QuartzCore \
             -framework Security \
             \
-            -o build/ShadowBreaker.dylib
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ShadowBreaker_dylib
-          path: build/ShadowBreaker.dylib
+            -lc++ \
+            -ldl \
+            \
+            -o build/ShadowCheats.dylib
+          
+          echo "✅ Build Finished Successfully"
