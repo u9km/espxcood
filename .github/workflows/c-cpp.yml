@@ -1,4 +1,4 @@
-name: Build Project from ZIPs (Non-JB)
+name: Build iOS Dynamic Library
 
 on:
   workflow_dispatch:
@@ -10,87 +10,38 @@ jobs:
     runs-on: macos-14
 
     steps:
-      - name: Checkout Code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare Files (Unzip, Patch & Bridge)
+      - name: Compile
         run: |
-          mkdir -p build
-          
-          # 1. فك ضغط المجلدات الثلاثة
-          if [ -f "esp.zip" ]; then unzip -q esp.zip; fi
-          if [ -f "kittymemory.zip" ]; then unzip -q kittymemory.zip; fi
-          if [ -f "sdk.zip" ]; then unzip -q sdk.zip; fi
-          
-          # 2. تحميل مكتبة Dobby (بديل Substrate للـ Non-JB)
-          curl -L -o dobby.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
-          unzip -q dobby.zip
-          mv Dobby-master Dobby
+          set -e
+          mkdir -p build # إنشاء مجلد للمخرجات
 
-          # 3. تحميل ملفات fishhook (تحتاجها KittyMemory)
-          curl -L -o fishhook.h https://raw.githubusercontent.com/facebook/fishhook/master/fishhook.h
-          
-          # 4. خدعة الجلبريك (Fake Substrate Bridge + MSFindSymbol)
-          cat <<EOF > substrate.h
-          #ifndef SUBSTRATE_H
-          #define SUBSTRATE_H
-          #include "Dobby/include/dobby.h"
-          #include <mach-o/dyld.h>
-          #include <dlfcn.h>
-          
-          #define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)
-          
-          static inline void* MSFindSymbol(void* image, const char* name) {
-              return dlsym(RTLD_DEFAULT, name);
-          }
-          
-          #endif
-          EOF
-
-          # 5. 🛠️ إصلاح خطأ sprintf في KittyMemory.cpp
-          if [ -f "KittyMemory/KittyMemory.cpp" ]; then
-            sed -i '' 's/sprintf(&buffer\[i \* 2\], "%02X", (unsigned char) temp\[i\]);/snprintf(\&buffer\[i \* 2\], 3, "%02X", (unsigned char) temp\[i\]);/g' KittyMemory/KittyMemory.cpp
-          fi
-          
-          # 6. 🛠️ إصلاح خطأ Array Bounds في الـ SDK (حجم الـ Buffer)
-          if [ -f "SDK/PUBGM_SAQER_CoreUObject_structs.hpp" ]; then
-            sed -i '' 's/char buffer\[25\];/char buffer\[26\];/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
-          fi
-
-          # 7. 🛠️ إصلاح خطأ Cast to 'const char *' (int to pointer)
-          if [ -f "SDK/PUBGM_SAQER_CoreUObject_structs.hpp" ]; then
-            sed -i '' 's/(const char\*)(int)/(const char*)(uintptr_t)/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
-          fi
-          
-          # 8. 🛠️ 🛠️ إصلاح خطأ Returning address of local temporary object (الجديد) 🛠️ 🛠️
-          if [ -f "SDK/PUBGM_SAQER_Basic.hpp" ]; then
-            # نستخدم static std::string لتجنب إتلاف الذاكرة
-            sed -i '' 's/{ std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/{ static std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/g' SDK/PUBGM_SAQER_Basic.hpp
-            # إصلاح الحالة التي لم يتم فيها التعديل سابقاً
-            sed -i '' 's/return convert.to_bytes(std::u16string(Data, Data + Count)).c_str();/{ static std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/g' SDK/PUBGM_SAQER_Basic.hpp
-            echo "✅ SDK Returning address patched successfully with static."
-          fi
-
-      - name: Compile Project
-        run: |
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
-          
+
           echo "🔍 Searching for source files..."
-          SOURCES=$(find . -name "*.cpp" -o -name "*.mm" -o -name "*.c" | grep -v "Dobby/tests" | grep -v "Dobby/example")
-          
+          # استثناء ملفات الـ examples الخاصة بالمكتبات الخارجية
+          SOURCES=$(find . -name "*.cpp" -o -name "*.mm" -o -name "*.c" | grep -v "Dobby/example" | grep -v "Dobby/tests")
+
+          if [ -z "$SOURCES" ]; then
+            echo "❌ No source files found!"
+            exit 1
+          fi
+
           echo "🚀 Compiling..."
-          
-          clang++ -arch arm64 -dynamiclib -std=c++17 \
+
+          clang++ \
+            -arch arm64 \
+            -dynamiclib \
+            -std=c++17 \
             -isysroot "$SDK_PATH" \
             -miphoneos-version-min=14.0 \
             -fobjc-arc \
-            -Wno-error \
             \
             -I. \
-            -I./SDK \
             -I./KittyMemory \
             -I./ESP \
-            -IDobby/include \
             \
             $SOURCES \
             \
@@ -100,10 +51,10 @@ jobs:
             -framework QuartzCore \
             -framework Security \
             \
-            -o build/ShadowCheats.dylib
+            -o build/ShadowBreaker.dylib
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ShadowCheats_dylib
-          path: build/ShadowCheats.dylib
+          name: ShadowBreaker_dylib
+          path: build/ShadowBreaker.dylib
