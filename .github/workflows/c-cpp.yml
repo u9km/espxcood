@@ -1,10 +1,9 @@
-name: Build Project from ZIPs (Non-JB)
+name: Build Stable Non-JB iOS dylib
 
-"on":
+on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
 
 jobs:
   build:
@@ -14,89 +13,50 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Prepare Files (Unzip, Patch & Bridge)
+      - name: Prepare Files (Unzip & Patch)
         run: |
-          set -e
           mkdir -p build
+          # فك ضغط المجلدات
+          if [ -f "esp.zip" ]; then unzip -q esp.zip; fi
+          if [ -f "kittymemory.zip" ]; then unzip -q kittymemory.zip; fi
+          if [ -f "sdk.zip" ]; then unzip -q sdk.zip; fi
           
-          # 1. فك ضغط المجلدات الثلاثة
-          if [ -f "esp.zip" ]; then unzip -o -q esp.zip; fi
-          if [ -f "kittymemory.zip" ]; then unzip -o -q kittymemory.zip; fi
-          if [ -f "sdk.zip" ]; then unzip -o -q sdk.zip; fi
-          
-          # 2. تحميل مكتبة Dobby
+          # تحميل مكتبة Hooking (Dobby) - الأفضل للاستقرار بدون جلبريك
           curl -L -o dobby.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
-          unzip -o -q dobby.zip
-          mv -f Dobby-master Dobby
+          unzip -q dobby.zip
+          mv Dobby-master Dobby
 
-          # 3. تحميل fishhook
-          curl -L -o fishhook.h https://raw.githubusercontent.com/facebook/fishhook/master/fishhook.h
-          
-          # 4. Fake Substrate Bridge
-          cat <<EOF > substrate.h
-          #ifndef SUBSTRATE_H
-          #define SUBSTRATE_H
-          #include "Dobby/include/dobby.h"
-          #include <mach-o/dyld.h>
-          #include <dlfcn.h>
-          
-          #define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)
-          
-          static inline void* MSFindSymbol(void* image, const char* name) {
-              return dlsym(RTLD_DEFAULT, name);
-          }
-          
-          #endif
-          EOF
-
-          # 5. إصلاح sprintf
-          if [ -f "KittyMemory/KittyMemory.cpp" ]; then
-            sed -i '' 's/sprintf(&buffer\[i \* 2\], "%02X", (unsigned char) temp\[i\]);/snprintf(\&buffer\[i \* 2\], 3, "%02X", (unsigned char) temp\[i\]);/g' KittyMemory/KittyMemory.cpp
-          fi
-          
-          # 6. إصلاح Buffer
+          # إصلاحات الـ SDK التلقائية (كما قمنا سابقاً)
           if [ -f "SDK/PUBGM_SAQER_CoreUObject_structs.hpp" ]; then
             sed -i '' 's/char buffer\[25\];/char buffer\[26\];/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
-          fi
-
-          # 7. إصلاح Cast
-          if [ -f "SDK/PUBGM_SAQER_CoreUObject_structs.hpp" ]; then
             sed -i '' 's/(const char\*)(int)/(const char*)(uintptr_t)/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
           fi
-          
-          # 8. إصلاح returning local temporary
           if [ -f "SDK/PUBGM_SAQER_Basic.hpp" ]; then
-            sed -i '' 's/{ std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/{ static std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/g' SDK/PUBGM_SAQER_Basic.hpp
             sed -i '' 's/return convert.to_bytes(std::u16string(Data, Data + Count)).c_str();/{ static std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/g' SDK/PUBGM_SAQER_Basic.hpp
           fi
 
-      - name: Compile Project
+      - name: Compile dylib with Best Practices
         run: |
-          set -e
-          
-          mkdir -p build
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           
           echo "🔍 Searching for source files..."
-          SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
-            | grep -v "Dobby/tests" \
-            | grep -v "Dobby/example")
-
-          if [ -z "$SOURCES" ]; then
-            echo "❌ No source files found!"
-            exit 1
-          fi
-
-          echo "🚀 Compiling..."
+          SOURCES=$(find . -name "*.cpp" -o -name "*.mm" -o -name "*.c" | grep -v "Dobby/example" | grep -v "Dobby/tests")
           
-          clang++ -v \
-            -arch arm64 -dynamiclib -std=c++17 \
+          echo "🚀 Compiling with optimizations..."
+          
+          # ضغط محترف: وضوح رموز مخفي، تحسينات الأداء، C++17
+          clang++ \
+            -arch arm64 \
+            -dynamiclib \
+            -std=c++17 \
             -isysroot "$SDK_PATH" \
             -miphoneos-version-min=14.0 \
             -fobjc-arc \
-            -Wno-error \
-            -Wno-deprecated-declarations \
-            -ferror-limit=0 \
+            -O2 \
+            -fvisibility=hidden \
+            -fvisibility-inlines-hidden \
+            -fno-rtti \
+            -fno-exceptions \
             \
             -I. \
             -I./SDK \
@@ -109,11 +69,7 @@ jobs:
             -framework Foundation \
             -framework UIKit \
             -framework CoreGraphics \
-            -framework QuartzCore \
             -framework Security \
-            \
-            -lc++ \
-            -ldl \
             \
             -o build/ShadowCheats.dylib
 
