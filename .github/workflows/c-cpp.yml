@@ -17,60 +17,57 @@ jobs:
         run: |
           mkdir -p build
           
-          # 1. فك ضغط الملفات الموجودة في مستودعك
-          if [ -f "ESP.zip" ]; then unzip -q ESP.zip; fi
-          if [ -f "KittyMemory.zip" ]; then unzip -q KittyMemory.zip; fi
-          if [ -f "SDK.zip" ]; then unzip -q SDK.zip; fi
+          # 1. فك ضغط الملفات المحلية الموجودة في مستودعك
+          [ -f "ESP.zip" ] && unzip -q ESP.zip
+          [ -f "KittyMemory.zip" ] && unzip -q KittyMemory.zip
+          [ -f "SDK.zip" ] && unzip -q SDK.zip
           
-          # 2. تحميل مكتبة Dobby كاملة (لأن مستودعك ينقصه المجلد)
-          echo "📥 Downloading Dobby Library..."
-          curl -L -o dobby_repo.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
-          unzip -q dobby_repo.zip
+          # 2. تحميل مكتبة Dobby كاملة (لأن مستودعك ينقصه المجلد المصدري)
+          echo "📥 Downloading Dobby Source..."
+          curl -L -o dobby_src.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
+          unzip -q dobby_src.zip
           mv Dobby-master Dobby
-          echo "✅ Dobby folder prepared."
-
-          # 3. تحميل TinySTL (رابط ZIP مباشر ومضمون)
-          echo "📥 Downloading TinySTL..."
-          curl -L -o TinySTL.zip https://github.com/kov4l3nko/TinySTL/archive/refs/heads/master.zip
-          unzip -q TinySTL.zip
+          
+          # 3. تحميل TinySTL (استخدام git clone لتجنب ملفات الـ ZIP التالفة)
+          echo "📥 Cloning TinySTL..."
+          git clone --depth 1 https://github.com/kov4l3nko/TinySTL.git
           mkdir -p Dobby/TINYSTL
-          cp -r TinySTL-master/include/* Dobby/TINYSTL/
-          
-          # 4. تحميل fishhook
-          curl -L -o fishhook.h https://raw.githubusercontent.com/facebook/fishhook/master/fishhook.h
-          
-          # 5. إنشاء substrate.h (تم الإصلاح لتجنب خطأ السنتكس في السطر 69)
-          printf '#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include "Dobby/include/dobby.h"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif' > substrate.h
+          cp -r TinySTL/include/* Dobby/TINYSTL/
 
-          # 6. إصلاحات برمجية سريعة (Patching)
-          if [ -f "KittyMemory/KittyMemory.cpp" ]; then
-            sed -i '' 's/sprintf(&buffer\[i \* 2\], "%02X", (unsigned char) temp\[i\]);/snprintf(\&buffer\[i \* 2\], 3, "%02X", (unsigned char) temp\[i\]);/g' KittyMemory/KittyMemory.cpp
-          fi
-          
-          if [ -f "Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c" ]; then
-            sed -i '' 's/sys_icache_invalidate(start, end - start);/sys_icache_invalidate((void *)start, (char *)end - (char *)start);/g' Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c
-          fi
+          # 4. إنشاء ملف substrate.h (إصلاح خطأ السطر 69 وتجنب مشاكل التنسيق)
+          printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif" > substrate.h
+
+          # 5. تصحيح مسارات Dobby Resolver (ضروري لترجمة Dobby بشكل صحيح)
+          mkdir -p Dobby/source/dobby/common
+          mkdir -p Dobby/source/dobby/logging
+          cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/source/dobby/common/ 2>/dev/null || true
+          cp -r Dobby/builtin-plugin/SymbolResolver/macho/logging/* Dobby/source/dobby/logging/ 2>/dev/null || true
+
+          # 6. تطبيق الإصلاحات البرمجية (Patching)
+          [ -f "KittyMemory/KittyMemory.cpp" ] && sed -i '' 's/sprintf(&buffer\[i \* 2\], "%02X", (unsigned char) temp\[i\]);/snprintf(\&buffer\[i \* 2\], 3, "%02X", (unsigned char) temp\[i\]);/g' KittyMemory/KittyMemory.cpp
+          [ -f "Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c" ] && sed -i '' 's/sys_icache_invalidate(start, end - start);/sys_icache_invalidate((void *)start, (char *)end - (char *)start);/g' Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c
 
       - name: Compile iOS dylib
         run: |
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           
-          # البحث عن ملفات السورس باستثناء ملفات x86 و الاختبارات
+          # البحث عن ملفات السورس باستثناء الاختبارات ومعماريات x86
           SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
             | grep -v "Dobby/example" | grep -v "Dobby/tests" \
-            | grep -v "x86")
+            | grep -v "source/InstructionRelocation/x86" \
+            | grep -v "source/TrampolineBridge/x86")
 
           clang++ -arch arm64 -dynamiclib -std=c++17 \
             -isysroot "$SDK_PATH" \
             -miphoneos-version-min=14.0 \
-            -O2 -fobjc-arc -fvisibility=hidden \
+            -O3 -fobjc-arc -fvisibility=hidden \
             -I. -IDobby/include -IDobby/source -IDobby/TINYSTL \
             -I./SDK -I./KittyMemory -I./ESP \
             $SOURCES \
             -framework Foundation -framework UIKit -framework Security -lc++ -ldl \
             -o build/ShadowCheats.dylib
 
-      - name: Upload Artifact
+      - name: Upload Result 📦
         uses: actions/upload-artifact@v4
         with:
           name: ShadowCheats_dylib
