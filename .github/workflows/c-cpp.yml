@@ -26,7 +26,7 @@ jobs:
           set -e
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
 
-          mkdir build_dobby
+          mkdir -p build_dobby
           cd build_dobby
 
           cmake ../Dobby \
@@ -40,6 +40,15 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release
 
           ninja
+
+          # تحديد مسار libdobby.a تلقائياً
+          cd ..
+          LIB_PATH=$(find build_dobby -name "libdobby.a" | head -n 1)
+          if [ -z "$LIB_PATH" ]; then
+            echo "libdobby.a not found!"
+            exit 1
+          fi
+          echo "LIB_PATH=$LIB_PATH" >> $GITHUB_ENV
 
       - name: Create substrate shim
         run: |
@@ -62,7 +71,7 @@ jobs:
             -fobjc-arc \
             -I./Dobby/include \
             $SOURCES \
-            build_dobby/lib/libdobby.a \
+            "$LIB_PATH" \
             -framework Foundation \
             -framework UIKit \
             -framework Security \
