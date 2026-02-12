@@ -17,19 +17,19 @@ jobs:
         run: |
           mkdir -p build
           
-          # 1. فك ضغط الملفات المحلية (إن وجدت في المستودع)
+          # 1. فك ضغط الملفات المحلية الموجودة في مستودعك (إن وجدت)
           [ -f "ESP.zip" ] && unzip -q ESP.zip
           [ -f "KittyMemory.zip" ] && unzip -q KittyMemory.zip
           [ -f "SDK.zip" ] && unzip -q SDK.zip
           
-          # 2. تحميل Dobby Source (بما أن هذا الرابط يعمل جيداً)
-          echo "📥 Downloading Dobby..."
+          # 2. تحميل مكتبة Dobby كاملة (باستخدام curl الموثوق)
+          echo "📥 Downloading Dobby Source..."
           curl -L -o dobby_src.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
           unzip -q dobby_src.zip
           mv Dobby-master Dobby
           echo "✅ Dobby prepared."
-
-          # 3. تحميل TinySTL باستخدام curl (لحل خطأ git clone/9 bytes)
+          
+          # 3. تحميل TinySTL باستخدام curl (لحل مشكلة git clone/9 bytes)
           echo "📥 Downloading TinySTL..."
           curl -L -o tinystl_src.zip https://github.com/kov4l3nko/TinySTL/archive/refs/heads/master.zip
           unzip -q tinystl_src.zip
