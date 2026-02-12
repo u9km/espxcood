@@ -17,25 +17,32 @@ jobs:
         run: |
           mkdir -p build
           
-          # 1. فك ضغط المجلدات المحلية
+          # 1. فك ضغط المجلدات المحلية (تأكد أن الملفات موجودة في المستودع)
           if [ -f "esp.zip" ]; then unzip -q esp.zip; fi
           if [ -f "kittymemory.zip" ]; then unzip -q kittymemory.zip; fi
           if [ -f "sdk.zip" ]; then unzip -q sdk.zip; fi
           
-          # 2. تحميل Dobby
+          # 2. تحميل Dobby (تعمل بنجاح)
           echo "📥 Downloading Dobby..."
           curl -L -o dobby.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
           unzip -q dobby.zip
           mv Dobby-master Dobby
 
-          # 3. تحميل TinySTL (استخدام رابط بديل مضمون) 🛠️
-          echo "📥 Downloading TinySTL from Mirror..."
-          # المستودع الأصلي لا يعمل، نستخدم نسخة احتياطية
-          git clone --depth 1 https://github.com/54shady/TinySTL.git
+          # 3. تحميل TinySTL (تم الإصلاح: استخدام مرآة عامة ZIP لتجنب طلب كلمة المرور) 🛠️
+          echo "📥 Downloading TinySTL..."
+          # نستخدم هذا المستودع لأنه نسخة مطابقة للأصلي المحذوف
+          curl -L -o TinySTL.zip https://github.com/kov4l3nko/TinySTL/archive/refs/heads/master.zip
           
-          # نسخ الملفات
-          mkdir -p Dobby/TINYSTL
-          cp -r TinySTL/include/* Dobby/TINYSTL/
+          if [ -s TinySTL.zip ]; then
+            unzip -q TinySTL.zip
+            mkdir -p Dobby/TINYSTL
+            # الانتباه: المجلد المفكوك يكون اسمه TinySTL-master
+            cp -r TinySTL-master/include/* Dobby/TINYSTL/
+            echo "✅ TinySTL downloaded and installed."
+          else
+            echo "❌ Failed to download TinySTL."
+            exit 1
+          fi
           
           # 4. إعداد مسارات Dobby
           mkdir -p Dobby/source/dobby/common
@@ -46,8 +53,7 @@ jobs:
           # 5. تحميل fishhook
           curl -L -o fishhook.h https://raw.githubusercontent.com/facebook/fishhook/master/fishhook.h
           
-          # 6. إنشاء Substrate Bridge (تم إصلاح التنسيق) 🛠️
-          # نستخدم printf لتجنب مشاكل المسافات في EOF
+          # 6. إنشاء Substrate Bridge (استخدام printf لتجنب أخطاء المسافات في YAML)
           printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\n\nstatic inline void* MSFindSymbol(void* image, const char* name) {\n    return dlsym(RTLD_DEFAULT, name);\n}\n\n#endif\n" > substrate.h
 
           # 7. إصلاحات KittyMemory
