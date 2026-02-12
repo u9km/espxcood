@@ -23,20 +23,28 @@ jobs:
           # Clone Dobby
           git clone --depth=1 https://github.com/jmpews/Dobby.git Dobby
 
-          # استخدم TinySTL الرسمي الخاص بـ mendsley (متوافق مع Dobby)
-          git clone --depth=1 https://github.com/mendsley/tinystl.git TinySTL
+          # Clone TinySTL (المتوافق)
+          git clone --depth=1 https://github.com/mendsley/tinystl.git tinystl_tmp
 
+          # إنشاء المسار الصحيح المطلوب من Dobby
           mkdir -p Dobby/TINYSTL
-          cp -r TinySTL/* Dobby/TINYSTL/
+          cp -r tinystl_tmp/* Dobby/TINYSTL/
+          rm -rf tinystl_tmp
 
-          # Fix required folders
-          mkdir -p Dobby/common
+          # إصلاح مسار logging المطلوب
           mkdir -p Dobby/logging
-          cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/common/ 2>/dev/null || true
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/logging/* Dobby/logging/ 2>/dev/null || true
 
+          # إصلاح common
+          mkdir -p Dobby/common
+          cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/common/ 2>/dev/null || true
+
+          # إصلاح MultiThreadSupport
           mkdir -p Dobby/source/MultiThreadSupport
           cp -r Dobby/source/Backend/UserMode/MultiThreadSupport/* Dobby/source/MultiThreadSupport/ 2>/dev/null || true
+
+          # حذف ملف clear-cache-tool-all.c لأنه يسبب خطأ pointer
+          rm -f Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c || true
 
           # Substrate shim
           printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif" > substrate.h
@@ -68,6 +76,8 @@ jobs:
             -IDobby/builtin-plugin/SymbolResolver \
             -IDobby/builtin-plugin/SymbolResolver/macho \
             -IDobby/TINYSTL \
+            -IDobby/logging \
+            -IDobby/common \
             -I./SDK \
             -I./KittyMemory \
             -I./ESP \
