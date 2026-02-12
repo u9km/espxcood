@@ -15,83 +15,60 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Prepare Sources
+      - name: Install CMake
+        run: brew install cmake
+
+      - name: Clone Dobby
         run: |
-          set -e
-          mkdir -p build
+          git clone --depth=1 https://github.com/jmpews/Dobby.git
 
-          # Clone Dobby
-          git clone --depth=1 https://github.com/jmpews/Dobby.git Dobby
-
-          # Clone TinySTL (المتوافق)
-          git clone --depth=1 https://github.com/mendsley/tinystl.git tinystl_tmp
-
-          # إنشاء المسار الصحيح المطلوب من Dobby
-          mkdir -p Dobby/TINYSTL
-          cp -r tinystl_tmp/* Dobby/TINYSTL/
-          rm -rf tinystl_tmp
-
-          # إصلاح مسار logging المطلوب
-          mkdir -p Dobby/logging
-          cp -r Dobby/builtin-plugin/SymbolResolver/macho/logging/* Dobby/logging/ 2>/dev/null || true
-
-          # إصلاح common
-          mkdir -p Dobby/common
-          cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/common/ 2>/dev/null || true
-
-          # إصلاح MultiThreadSupport
-          mkdir -p Dobby/source/MultiThreadSupport
-          cp -r Dobby/source/Backend/UserMode/MultiThreadSupport/* Dobby/source/MultiThreadSupport/ 2>/dev/null || true
-
-          # حذف ملف clear-cache-tool-all.c لأنه يسبب خطأ pointer
-          rm -f Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c || true
-
-          # Substrate shim
-          printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif" > substrate.h
-
-      - name: Compile iOS dylib
+      - name: Build Dobby (iOS arm64)
         run: |
           set -e
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
 
-          SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
-            | grep -vE "test|Test|example|Example|tests|Tests|x86|x64|Profiler")
+          mkdir build_dobby
+          cd build_dobby
+
+          cmake ../Dobby \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=$SDK_PATH \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+            -DCMAKE_BUILD_TYPE=Release
+
+          make -j4
+
+      - name: Create substrate shim
+        run: |
+          printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif" > substrate.h
+
+      - name: Build Your dylib
+        run: |
+          set -e
+          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+
+          SOURCES=$(find . -maxdepth 3 \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
+            | grep -v Dobby)
 
           clang++ -arch arm64 \
             -dynamiclib \
             -std=c++17 \
-            -w \
             -isysroot "$SDK_PATH" \
             -miphoneos-version-min=14.0 \
             -O3 \
             -fobjc-arc \
-            -fvisibility=hidden \
-            -I. \
-            -IDobby \
-            -IDobby/include \
-            -IDobby/source \
-            -IDobby/source/Backend \
-            -IDobby/source/Backend/UserMode \
-            -IDobby/builtin-plugin \
-            -IDobby/builtin-plugin/SymbolResolver \
-            -IDobby/builtin-plugin/SymbolResolver/macho \
-            -IDobby/TINYSTL \
-            -IDobby/logging \
-            -IDobby/common \
-            -I./SDK \
-            -I./KittyMemory \
-            -I./ESP \
+            -I./Dobby/include \
             $SOURCES \
+            build_dobby/libdobby.a \
             -framework Foundation \
             -framework UIKit \
-            -framework Security \
-            -framework CoreImage \
             -lc++ \
             -ldl \
-            -o build/ShadowCheats.dylib
+            -o ShadowCheats.dylib
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ShadowCheats_dylib
-          path: build/ShadowCheats.dylib
+          path: ShadowCheats.dylib
