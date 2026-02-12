@@ -21,16 +21,23 @@ jobs:
           
           echo "📦 Extracting files..."
           unzip -q ESP.zip && unzip -q KittyMemory.zip && unzip -q SDK.zip
-          unzip -q Dobby-master.zip && unzip -q TinySTL-master.zip
+          unzip -q Dobby-master.zip
+          
+          # فك ضغط TinySTL إلى مجلد محدد
+          mkdir -p TinySTL_Temp
+          unzip -q TinySTL-master.zip -d TinySTL_Temp
           
           echo "📂 Organizing Dobby and TinySTL..."
           mv Dobby-master Dobby
           mkdir -p Dobby/TINYSTL
-          cp -r TinySTL-master/include/* Dobby/TINYSTL/ 2>/dev/null || cp -r TinySTL-master/* Dobby/TINYSTL/
+          
+          # البحث عن ملفات الـ include داخل المجلد المفكوك ونسخها
+          cp -r TinySTL_Temp/*/include/* Dobby/TINYSTL/ 2>/dev/null || cp -r TinySTL_Temp/* Dobby/TINYSTL/ 2>/dev/null || echo "⚠️ Could not find specific TinySTL files, attempting default..."
           
           echo "🧹 Deep Cleaning Noise..."
-          # حذف المجلدات التي تسبب أخطاء ولا نحتاجها في البناء نهائياً
-          rm -rf Dobby/tests Dobby/example TinySTL-master/Test TinySTL-master/Profiler Dobby/TINYSTL/TINYSTL/Detail Dobby/TINYSTL/TINYSTL/Profiler
+          # حذف المجلدات التي تسبب أخطاء
+          rm -rf Dobby/tests Dobby/example
+          rm -rf Dobby/TINYSTL/TINYSTL/Detail Dobby/TINYSTL/TINYSTL/Profiler
           
           echo "🤖 Precision Source Repair..."
           
@@ -65,7 +72,7 @@ jobs:
           
           # استبعاد شامل للملفات غير الضرورية
           SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
-            | grep -vE "test|Test|example|Example|tests|Tests|x86|x64|TinySTL-master|Detail|Profiler")
+            | grep -vE "test|Test|example|Example|tests|Tests|x86|x64|TinySTL-master|Detail|Profiler|TinySTL_Temp")
 
           echo "🔍 Files to be compiled: $(echo "$SOURCES" | wc -l) files."
 
