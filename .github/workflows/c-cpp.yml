@@ -32,21 +32,15 @@ jobs:
 
           echo "📂 Detecting Dobby folder..."
           DOBBY_DIR=$(find . -maxdepth 1 -type d -iname "Dobby*" | head -n 1)
-          if [ -z "$DOBBY_DIR" ]; then
-            echo "❌ Dobby folder not found!"
-            exit 1
-          fi
+          [ -z "$DOBBY_DIR" ] && echo "❌ Dobby not found!" && exit 1
           mv "$DOBBY_DIR" Dobby
 
           echo "📂 Detecting TinySTL folder..."
           TINYSTL_DIR=$(find . -maxdepth 1 -type d -iname "TinySTL*" | head -n 1)
-          if [ -z "$TINYSTL_DIR" ]; then
-            echo "❌ TinySTL folder not found!"
-            exit 1
-          fi
+          [ -z "$TINYSTL_DIR" ] && echo "❌ TinySTL not found!" && exit 1
           mv "$TINYSTL_DIR" TinySTL
 
-          echo "📦 Installing TinySTL into Dobby..."
+          echo "📦 Installing TinySTL..."
           mkdir -p Dobby/TINYSTL
           if [ -d TinySTL/include ]; then
             cp -r TinySTL/include/* Dobby/TINYSTL/
@@ -55,7 +49,6 @@ jobs:
           fi
 
           echo "🔧 Fix missing internal headers..."
-
           mkdir -p Dobby/common
           mkdir -p Dobby/logging
 
@@ -66,7 +59,7 @@ jobs:
           mkdir -p Dobby/source/MultiThreadSupport
           cp -r Dobby/source/Backend/UserMode/MultiThreadSupport/* Dobby/source/MultiThreadSupport/ 2>/dev/null || true
 
-          echo "🛠 TinySTL compatibility patch..."
+          echo "🛠 TinySTL minimal compatibility patch..."
           find Dobby/TINYSTL -name "Algorithm.h" -exec sed -i '' 's/typedef iterator_traits/typedef typename iterator_traits/g' {} + || true
           find Dobby/TINYSTL -name "Algorithm.h" -exec sed -i '' 's/memset/::memset/g' {} + || true
 
@@ -90,6 +83,7 @@ jobs:
             -std=c++17 \
             -w \
             -fpermissive \
+            -include cstddef \
             -isysroot "$SDK_PATH" \
             -miphoneos-version-min=14.0 \
             -O3 \
