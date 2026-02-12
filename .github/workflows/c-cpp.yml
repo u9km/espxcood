@@ -36,6 +36,12 @@ jobs:
           
           echo "🤖 Precision Source Repair (Patching Dobby & SDK)..."
           
+          # 🚀🚀 الإضافة الجديدة هنا: إضافة cstddef إلى ملفات TinySTL الأساسية 🚀🚀
+          find Dobby/TINYSTL -name "allocator.h" -exec sed -i '' '1s/^/#include <cstddef>\n/' {} +
+          find Dobby/TINYSTL -name "hash.h" -exec sed -i '' '1s/^/#include <cstddef>\n/' {} +
+          find Dobby/TINYSTL -name "string.h" -exec sed -i '' '1s/^/#include <cstddef>\n/' {} +
+          # -----------------------------------------------------------------------------
+          
           # 1. نقل الملفات المفقودة من الـ plugin إلى الـ source
           mkdir -p Dobby/source/dobby/common Dobby/source/dobby/logging
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/source/dobby/common/ 2>/dev/null || true
