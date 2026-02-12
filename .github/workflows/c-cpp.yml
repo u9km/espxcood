@@ -47,10 +47,17 @@ jobs:
           #endif
           EOF
 
-          # 5. إصلاحات الـ SDK التلقائية (sed patches)
+          # 5. إصلاحات KittyMemory
           if [ -f "KittyMemory/KittyMemory.cpp" ]; then
             sed -i '' 's/sprintf(&buffer\[i \* 2\], "%02X", (unsigned char) temp\[i\]);/snprintf(\&buffer\[i \* 2\], 3, "%02X", (unsigned char) temp\[i\]);/g' KittyMemory/KittyMemory.cpp
           fi
+          
+          # 6. إصلاح خطأ arithmetic on pointers to void في Dobby
+          if [ -f "Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c" ]; then
+            sed -i '' 's/sys_icache_invalidate(start, end - start);/sys_icache_invalidate((void *)start, (char *)end - (char *)start);/g' Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c
+          fi
+          
+          # 7. إصلاحات الـ SDK التلقائية (sed patches)
           if [ -f "SDK/PUBGM_SAQER_CoreUObject_structs.hpp" ]; then
             sed -i '' 's/char buffer\[25\];/char buffer\[26\];/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
             sed -i '' 's/(const char\*)(int)/(const char*)(uintptr_t)/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
@@ -65,7 +72,6 @@ jobs:
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           
           echo "🔍 Searching for source files..."
-          # 🛠️ 🛠️ استثناء ملفات X86/X64 الخاصة بـ Dobby 🛠️ 🛠️
           SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
             | grep -v "Dobby/example" \
             | grep -v "Dobby/tests" \
@@ -79,6 +85,7 @@ jobs:
 
           echo "🚀 Compiling with optimizations..."
           
+          # 🛠️ 🛠️ إضافة مسارات Includes الصحيحة لـ Dobby 🛠️ 🛠️
           clang++ \
             -arch arm64 \
             -dynamiclib \
@@ -100,6 +107,10 @@ jobs:
             -I./ESP \
             -IDobby/include \
             -IDobby/source \
+            -IDobby/builtin-plugin/SymbolResolver \
+            -IDobby/source/dobby \
+            -IDobby/source/Backend/UserMode/ExecMemory \
+            -IDobby/source/Backend/UserMode/MultiThreadSupport \
             \
             $SOURCES \
             \
