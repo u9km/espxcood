@@ -17,14 +17,14 @@ jobs:
         run: |
           mkdir -p build
           
-          # 1. فك ضغط المجلدات المضغوطة المحلية (تأكد من وجودها في المستودع)
+          # 1. فك ضغط المجلدات المضغوطة المحلية
           if [ -f "esp.zip" ]; then unzip -q esp.zip; fi
           if [ -f "kittymemory.zip" ]; then unzip -q kittymemory.zip; fi
           if [ -f "sdk.zip" ]; then unzip -q sdk.zip; fi
           
-          # 2. تحميل محرك Hooking (Dobby) - رابط الفرع الرئيسي 🛠️
+          # 2. تحميل محرك Hooking (Dobby) - باستخدام curl المباشر 🛠️
           echo "📥 Downloading Dobby..."
-          wget -O dobby.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
+          curl -L -o dobby.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
           
           # التحقق من أن الملف تم تحميله بنجاح
           if [ -s dobby.zip ]; then
@@ -36,26 +36,26 @@ jobs:
           
           echo "📂 Unzipping Dobby..."
           unzip -q dobby.zip
-          # تحديث اسم المجلد ليطابق الفرع الرئيسي
           mv Dobby-master Dobby
 
-          # 3. تحميل مكتبة TinySTL الفعلية وتصحيح مسارات Dobby
-          echo "📥 Downloading TinySTL and setting up paths..."
-          git clone --depth 1 https://github.com/zyj1989/TinySTL.git
+          # 3. تحميل مكتبة TinySTL
+          echo "📥 Downloading TinySTL..."
+          curl -L -o TinySTL.zip https://github.com/zyj1989/TinySTL/archive/refs/heads/master.zip
+          unzip -q TinySTL.zip
           mkdir -p Dobby/TINYSTL
-          cp -r TinySTL/include/* Dobby/TINYSTL/
+          cp -r TinySTL-master/include/* Dobby/TINYSTL/
           
-          # 🛠️ تصحيح المسارات: نسخ ملفات Resolver إلى أماكنها الصحيحة
+          # تصحيح المسارات: نسخ ملفات Resolver إلى أماكنها الصحيحة
           mkdir -p Dobby/source/dobby/common
           mkdir -p Dobby/source/dobby/logging
           
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/source/dobby/common/
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/logging/* Dobby/source/dobby/logging/
           
-          # 4. تحميل مكتبة fishhook (تحتاجها KittyMemory)
+          # 4. تحميل مكتبة fishhook
           curl -L -o fishhook.h https://raw.githubusercontent.com/facebook/fishhook/master/fishhook.h
           
-          # 5. خدعة الجلبريك (Fake Substrate Bridge + MSFindSymbol)
+          # 5. خدعة الجلبريك (Fake Substrate Bridge)
           cat <<EOF > substrate.h
           #ifndef SUBSTRATE_H
           #define SUBSTRATE_H
@@ -72,28 +72,26 @@ jobs:
           #endif
           EOF
 
-          # 6. 🛠️ إصلاح خطأ sprintf في KittyMemory.cpp تلقائياً
+          # 6. إصلاحات KittyMemory
           if [ -f "KittyMemory/KittyMemory.cpp" ]; then
             sed -i '' 's/sprintf(&buffer\[i \* 2\], "%02X", (unsigned char) temp\[i\]);/snprintf(\&buffer\[i \* 2\], 3, "%02X", (unsigned char) temp\[i\]);/g' KittyMemory/KittyMemory.cpp
             echo "✅ KittyMemory.cpp patched successfully."
           fi
           
-          # 7. 🛠️ إصلاح خطأ Pointer Arithmetic في Dobby (لـ arm64)
+          # 7. إصلاح Pointer Arithmetic في Dobby
           if [ -f "Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c" ]; then
             sed -i '' 's/sys_icache_invalidate(start, end - start);/sys_icache_invalidate((void *)start, (char *)end - (char *)start);/g' Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c
             echo "✅ Dobby patched successfully."
           fi
           
-          # 8. 🛠️ إصلاحات الـ SDK التلقائية (sed patches)
+          # 8. إصلاحات الـ SDK التلقائية
           if [ -f "SDK/PUBGM_SAQER_CoreUObject_structs.hpp" ]; then
             sed -i '' 's/char buffer\[25\];/char buffer\[26\];/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
             sed -i '' 's/(const char\*)(int)/(const char*)(uintptr_t)/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
-            echo "✅ SDK Patched successfully."
           fi
           if [ -f "SDK/PUBGM_SAQER_Basic.hpp" ]; then
             sed -i '' 's/{ std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/{ static std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/g' SDK/PUBGM_SAQER_Basic.hpp
             sed -i '' 's/return convert.to_bytes(std::u16string(Data, Data + Count)).c_str();/{ static std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/g' SDK/PUBGM_SAQER_Basic.hpp
-            echo "✅ SDK Patched successfully."
           fi
 
       - name: Compile dylib with Best Practices
@@ -112,9 +110,8 @@ jobs:
             exit 1
           fi
 
-          echo "🚀 Compiling with optimizations..."
+          echo "🚀 Compiling..."
           
-          # 🛠️ تجميع متكامل مع أفضل ممارسات الاستقرار والذاكرة
           clang++ \
             -arch arm64 \
             -dynamiclib \
