@@ -20,7 +20,7 @@ jobs:
           git clone --depth=1 https://github.com/jmpews/Dobby.git
           git clone --depth=1 https://github.com/leetal/ios-cmake.git
 
-      - name: Build Dobby (Fix C/C++ Compiler Mismatch)
+      - name: Build Dobby (ARM64 only)
         run: |
           set -e
           mkdir build_dobby
@@ -38,31 +38,26 @@ jobs:
             -DENABLE_BITCODE=0 \
             -DDOBBY_BUILD_TEST=OFF \
             -DDOBBY_BUILD_EXAMPLE=OFF \
-            -DCMAKE_C_COMPILER=clang \
-            -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_BUILD_TYPE=Release
 
           ninja
-
           cd ..
+
           LIB_PATH=$(find build_dobby -name "libdobby.a" | head -n 1)
-          if [ -z "$LIB_PATH" ]; then
-            echo "libdobby.a not found"
-            exit 1
-          fi
           echo "LIB_PATH=$LIB_PATH" >> $GITHUB_ENV
 
       - name: Create substrate shim
         run: |
           printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif" > substrate.h
 
-      - name: Build Your dylib
+      - name: Build Your dylib (FIXED)
         run: |
           set -e
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
 
-          SOURCES=$(find . -maxdepth 5 \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
-            | grep -v Dobby)
+          # ابحث فقط في مجلد مشروعك (وليس build_dobby)
+          SOURCES=$(find ./ESP ./KittyMemory ./SDK -type f \
+            \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \))
 
           clang++ -arch arm64 \
             -dynamiclib \
@@ -72,6 +67,9 @@ jobs:
             -O3 \
             -fobjc-arc \
             -I./Dobby/include \
+            -I./ESP \
+            -I./KittyMemory \
+            -I./SDK \
             $SOURCES \
             "$LIB_PATH" \
             -framework Foundation \
