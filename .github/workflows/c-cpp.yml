@@ -18,22 +18,18 @@ jobs:
       - name: Prepare Sources
         run: |
           set -e
-
           mkdir -p build
 
-          # Clone dependencies مباشرة
+          # Clone Dobby
           git clone --depth=1 https://github.com/jmpews/Dobby.git Dobby
-          git clone --depth=1 https://github.com/zouxiaohang/TinySTL.git TinySTL
 
-          # نسخ TinySTL داخل Dobby
+          # استخدم TinySTL الرسمي الخاص بـ mendsley (متوافق مع Dobby)
+          git clone --depth=1 https://github.com/mendsley/tinystl.git TinySTL
+
           mkdir -p Dobby/TINYSTL
-          if [ -d TinySTL/include ]; then
-            cp -r TinySTL/include/* Dobby/TINYSTL/
-          else
-            cp -r TinySTL/* Dobby/TINYSTL/
-          fi
+          cp -r TinySTL/* Dobby/TINYSTL/
 
-          # Fix internal paths
+          # Fix required folders
           mkdir -p Dobby/common
           mkdir -p Dobby/logging
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/common/ 2>/dev/null || true
@@ -42,7 +38,7 @@ jobs:
           mkdir -p Dobby/source/MultiThreadSupport
           cp -r Dobby/source/Backend/UserMode/MultiThreadSupport/* Dobby/source/MultiThreadSupport/ 2>/dev/null || true
 
-          # Create substrate shim
+          # Substrate shim
           printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif" > substrate.h
 
       - name: Compile iOS dylib
@@ -57,7 +53,6 @@ jobs:
             -dynamiclib \
             -std=c++17 \
             -w \
-            -fpermissive \
             -isysroot "$SDK_PATH" \
             -miphoneos-version-min=14.0 \
             -O3 \
