@@ -36,12 +36,6 @@ jobs:
           
           echo "🤖 Precision Source Repair (Patching Dobby & SDK)..."
           
-          # 🚀🚀 الإضافة الجديدة هنا: إضافة cstddef إلى ملفات TinySTL الأساسية 🚀🚀
-          find Dobby/TINYSTL -name "allocator.h" -exec sed -i '' '1s/^/#include <cstddef>\n/' {} +
-          find Dobby/TINYSTL -name "hash.h" -exec sed -i '' '1s/^/#include <cstddef>\n/' {} +
-          find Dobby/TINYSTL -name "string.h" -exec sed -i '' '1s/^/#include <cstddef>\n/' {} +
-          # -----------------------------------------------------------------------------
-          
           # 1. نقل الملفات المفقودة من الـ plugin إلى الـ source
           mkdir -p Dobby/source/dobby/common Dobby/source/dobby/logging
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/source/dobby/common/ 2>/dev/null || true
@@ -81,13 +75,11 @@ jobs:
 
           # 🚀 إضافة مسارات Includes دقيقة واستخدام std=c++17 مع libc++
           clang++ -arch arm64 -dynamiclib -std=c++17 -w -fpermissive \
-            -isysroot "$SDK_PATH" \
             -stdlib=libc++ \
+            -isysroot "$SDK_PATH" \
             -miphoneos-version-min=14.0 \
             -O3 -fobjc-arc -fvisibility=hidden \
             -I. \
-            -I"$SDK_PATH/usr/include" \
-            -I"$SDK_PATH/usr/include/c++/v1" \
             -IDobby/include \
             -IDobby/source \
             -IDobby/TINYSTL \
