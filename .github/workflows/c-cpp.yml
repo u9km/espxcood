@@ -13,77 +13,64 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Prepare Files (Setup Dobby & Dependencies)
+      - name: Prepare Files (Setup Everything)
         run: |
           mkdir -p build
           
-          # 1. فك ضغط المجلدات المضغوطة المحلية (إذا وجدت) 📦
-          if [ -f "esp.zip" ]; then unzip -q esp.zip; fi
-          if [ -f "kittymemory.zip" ]; then unzip -q kittymemory.zip; fi
-          if [ -f "sdk.zip" ]; then unzip -q sdk.zip; fi
+          # 1. فك ضغط الملفات الموجودة في مستودعك
+          if [ -f "ESP.zip" ]; then unzip -q ESP.zip; fi
+          if [ -f "KittyMemory.zip" ]; then unzip -q KittyMemory.zip; fi
+          if [ -f "SDK.zip" ]; then unzip -q SDK.zip; fi
           
-          # 2. التحقق من وجود مجلد Dobby (الملفات العادية) 📂
-          echo "📂 Checking for Dobby folder..."
-          if [ -d "Dobby" ]; then
-            echo "✅ Dobby folder found."
-          else
-            echo "❌ Dobby folder not found! Please ensure Dobby files are in a folder named 'Dobby' in the repository root."
-            exit 1
-          fi
+          # 2. تحميل مكتبة Dobby كاملة (لأن مستودعك ينقصه المجلد)
+          echo "📥 Downloading Dobby Library..."
+          curl -L -o dobby_repo.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
+          unzip -q dobby_repo.zip
+          mv Dobby-master Dobby
+          echo "✅ Dobby folder prepared."
 
-          # 3. تحميل TinySTL (استخدام curl بدلاً من git clone لتجنب الأخطاء) 📥
+          # 3. تحميل TinySTL (رابط ZIP مباشر ومضمون)
           echo "📥 Downloading TinySTL..."
           curl -L -o TinySTL.zip https://github.com/kov4l3nko/TinySTL/archive/refs/heads/master.zip
           unzip -q TinySTL.zip
-          
-          # 4. نقل ملفات TinySTL إلى Dobby كما يتوقع الـ CMake
           mkdir -p Dobby/TINYSTL
           cp -r TinySTL-master/include/* Dobby/TINYSTL/
           
-          # 5. تحميل مكتبة fishhook
+          # 4. تحميل fishhook
           curl -L -o fishhook.h https://raw.githubusercontent.com/facebook/fishhook/master/fishhook.h
-          # نقل fishhook إلى Dobby
-          mkdir -p Dobby/TINYSTL/fishhook
-          cp fishhook.h Dobby/TINYSTL/fishhook/
           
-          # 6. إصلاحات Pointer Arithmetic في Dobby
-          if [ -f "Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c" ]; then
-            sed -i '' 's/sys_icache_invalidate(start, end - start);/sys_icache_invalidate((void *)start, (char *)end - (char *)start);/g' Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c
-          fi
-          
-          # 7. إصلاح KittyMemory (إذا وجد)
+          # 5. إنشاء substrate.h (تم الإصلاح لتجنب خطأ السنتكس في السطر 69)
+          printf '#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include "Dobby/include/dobby.h"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif' > substrate.h
+
+          # 6. إصلاحات برمجية سريعة (Patching)
           if [ -f "KittyMemory/KittyMemory.cpp" ]; then
             sed -i '' 's/sprintf(&buffer\[i \* 2\], "%02X", (unsigned char) temp\[i\]);/snprintf(\&buffer\[i \* 2\], 3, "%02X", (unsigned char) temp\[i\]);/g' KittyMemory/KittyMemory.cpp
           fi
+          
+          if [ -f "Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c" ]; then
+            sed -i '' 's/sys_icache_invalidate(start, end - start);/sys_icache_invalidate((void *)start, (char *)end - (char *)start);/g' Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c
+          fi
 
-      - name: Build with CMake (iOS) 🚀
+      - name: Compile iOS dylib
         run: |
-          # إعداد متغيرات بيئة الـ iOS
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           
-          # الذهاب إلى مجلد Dobby
-          cd Dobby
-          mkdir -p build
-          cd build
-          
-          # إعداد CMake للـ iOS
-          cmake .. \
-            -DCMAKE_SYSTEM_NAME=iOS \
-            -DCMAKE_OSX_SYSROOT=$SDK_PATH \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DDOBBY_DEBUG=OFF \
-            -DNearBranch=ON \
-            -DPlugin.SymbolResolver=ON \
-            -DBUILD_SHARED_LIBS=ON
-            
-          # البناء
-          make -j$(sysctl -n hw.ncpu)
-          
-          # نقل الملف الناتج
-          cp libdobby.dylib ../../build/ShadowCheats.dylib
+          # البحث عن ملفات السورس باستثناء ملفات x86 و الاختبارات
+          SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
+            | grep -v "Dobby/example" | grep -v "Dobby/tests" \
+            | grep -v "x86")
 
-      - name: Upload Artifact 📦
+          clang++ -arch arm64 -dynamiclib -std=c++17 \
+            -isysroot "$SDK_PATH" \
+            -miphoneos-version-min=14.0 \
+            -O2 -fobjc-arc -fvisibility=hidden \
+            -I. -IDobby/include -IDobby/source -IDobby/TINYSTL \
+            -I./SDK -I./KittyMemory -I./ESP \
+            $SOURCES \
+            -framework Foundation -framework UIKit -framework Security -lc++ -ldl \
+            -o build/ShadowCheats.dylib
+
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ShadowCheats_dylib
