@@ -51,13 +51,7 @@ jobs:
           fi
 
           echo "🔧 Proper TinySTL type fix..."
-          find Dobby/TINYSTL -type f -name "*.h" -exec \
-            sed -i '' '1i\
-#include <cstddef>\
-#include <cstdint>\
-using std::size_t;\
-using std::ptrdiff_t;\
-' {} +
+          find Dobby/TINYSTL -type f -name "*.h" -exec sed -i '' $'1i\\\n#include <cstddef>\\\n#include <cstdint>\\\nusing std::size_t;\\\nusing std::ptrdiff_t;\n' {} +
 
           echo "🔧 Fix internal Dobby paths..."
           mkdir -p Dobby/common
