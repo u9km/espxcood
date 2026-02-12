@@ -15,59 +15,86 @@ jobs:
 
       - name: Prepare and Ultimate Source Repair
         run: |
+          set -e
           mkdir -p build
           export LC_ALL=C
           export LANG=C
           
-          echo "📦 Extracting files..."
-          unzip -q ESP.zip
-          unzip -q KittyMemory.zip
-          unzip -q SDK.zip
-          unzip -q Dobby-master.zip
-          unzip -q TinySTL-master.zip
+          echo "📦 Extracting archives..."
+          unzip -q ESP.zip || true
+          unzip -q KittyMemory.zip || true
+          unzip -q SDK.zip || true
+          unzip -q Dobby-master.zip || unzip -q Dobby-main.zip || true
+          unzip -q TinySTL-master.zip || unzip -q TinySTL-main.zip || true
           
-          echo "📂 Organizing Dobby and TinySTL..."
-          mv Dobby-master Dobby
-          mv TinySTL-master TinySTL
-          
+          echo "📁 Current directories:"
+          ls -d */
+
+          echo "📂 Detecting Dobby folder..."
+          DOBBY_DIR=$(find . -maxdepth 1 -type d -iname "Dobby*" | head -n 1)
+          if [ -z "$DOBBY_DIR" ]; then
+            echo "❌ Dobby folder not found!"
+            exit 1
+          fi
+          mv "$DOBBY_DIR" Dobby
+
+          echo "📂 Detecting TinySTL folder..."
+          TINYSTL_DIR=$(find . -maxdepth 1 -type d -iname "TinySTL*" | head -n 1)
+          if [ -z "$TINYSTL_DIR" ]; then
+            echo "❌ TinySTL folder not found!"
+            exit 1
+          fi
+          mv "$TINYSTL_DIR" TinySTL
+
+          echo "📦 Installing TinySTL into Dobby..."
           mkdir -p Dobby/TINYSTL
-          cp -r TinySTL/include/* Dobby/TINYSTL/
+          if [ -d TinySTL/include ]; then
+            cp -r TinySTL/include/* Dobby/TINYSTL/
+          else
+            cp -r TinySTL/* Dobby/TINYSTL/
+          fi
 
           echo "🔧 Fix missing internal headers..."
-          
-          # إصلاح common و logging في مكانهم الصحيح
+
           mkdir -p Dobby/common
           mkdir -p Dobby/logging
-          
+
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/common/ 2>/dev/null || true
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/logging/* Dobby/logging/ 2>/dev/null || true
 
-          echo "🧠 Fix ThreadSupport include path..."
-          mkdir -p Dobby/source/Backend/UserMode/MultiThreadSupport
+          echo "🧠 Fix ThreadSupport path..."
+          mkdir -p Dobby/source/MultiThreadSupport
           cp -r Dobby/source/Backend/UserMode/MultiThreadSupport/* Dobby/source/MultiThreadSupport/ 2>/dev/null || true
 
-          echo "🛠 Fix TinySTL compatibility..."
-          
-          find Dobby/TINYSTL -name "Algorithm.h" -exec sed -i '' 's/typedef iterator_traits/typedef typename iterator_traits/g' {} +
-          find Dobby/TINYSTL -name "Algorithm.h" -exec sed -i '' 's/memset/::memset/g' {} +
+          echo "🛠 TinySTL compatibility patch..."
+          find Dobby/TINYSTL -name "Algorithm.h" -exec sed -i '' 's/typedef iterator_traits/typedef typename iterator_traits/g' {} + || true
+          find Dobby/TINYSTL -name "Algorithm.h" -exec sed -i '' 's/memset/::memset/g' {} + || true
 
-          echo "📝 Create substrate shim..."
+          echo "📝 Creating substrate shim..."
           printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif" > substrate.h
 
       - name: Compile iOS dylib
         run: |
+          set -e
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
-          
-          # لا نستبعد builtin-plugin لأنه يحتوي ملفات يعتمد عليها Dobby
+
+          echo "🔎 Collecting source files..."
           SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
-            | grep -vE "test|Test|example|Example|tests|Tests|x86|x64|TinySTL-master|Profiler")
+            | grep -vE "test|Test|example|Example|tests|Tests|x86|x64|Profiler|TinySTL-master|TinySTL-main")
 
           echo "🔍 Files to be compiled: $(echo "$SOURCES" | wc -l) files."
 
-          clang++ -arch arm64 -dynamiclib -std=c++17 -w -fpermissive \
+          echo "🚀 Building dylib..."
+          clang++ -arch arm64 \
+            -dynamiclib \
+            -std=c++17 \
+            -w \
+            -fpermissive \
             -isysroot "$SDK_PATH" \
             -miphoneos-version-min=14.0 \
-            -O3 -fobjc-arc -fvisibility=hidden \
+            -O3 \
+            -fobjc-arc \
+            -fvisibility=hidden \
             -I. \
             -IDobby \
             -IDobby/include \
@@ -85,8 +112,11 @@ jobs:
             -framework Foundation \
             -framework UIKit \
             -framework Security \
-            -lc++ -ldl \
+            -lc++ \
+            -ldl \
             -o build/ShadowCheats.dylib
+
+          echo "✅ Build finished successfully."
 
       - name: Upload Result 📦
         uses: actions/upload-artifact@v4
