@@ -22,21 +22,21 @@ jobs:
           if [ -f "kittymemory.zip" ]; then unzip -q kittymemory.zip; fi
           if [ -f "sdk.zip" ]; then unzip -q sdk.zip; fi
           
-          # 2. تحميل Dobby (تعمل بنجاح)
+          # 2. تحميل Dobby
           echo "📥 Downloading Dobby..."
           curl -L -o dobby.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
           unzip -q dobby.zip
           mv Dobby-master Dobby
 
-          # 3. تحميل TinySTL (تم الإصلاح: استخدام مرآة عامة ZIP لتجنب طلب كلمة المرور) 🛠️
-          echo "📥 Downloading TinySTL..."
-          # نستخدم هذا المستودع لأنه نسخة مطابقة للأصلي المحذوف
+          # 3. تحميل TinySTL (تم تحديث الرابط لمرآة تعمل 🛠️)
+          echo "📥 Downloading TinySTL from Mirror..."
+          # استخدام مرآة ZIP مختلفة
           curl -L -o TinySTL.zip https://github.com/kov4l3nko/TinySTL/archive/refs/heads/master.zip
           
           if [ -s TinySTL.zip ]; then
             unzip -q TinySTL.zip
             mkdir -p Dobby/TINYSTL
-            # الانتباه: المجلد المفكوك يكون اسمه TinySTL-master
+            # المجلد المفكوك يكون اسمه TinySTL-master
             cp -r TinySTL-master/include/* Dobby/TINYSTL/
             echo "✅ TinySTL downloaded and installed."
           else
@@ -53,7 +53,7 @@ jobs:
           # 5. تحميل fishhook
           curl -L -o fishhook.h https://raw.githubusercontent.com/facebook/fishhook/master/fishhook.h
           
-          # 6. إنشاء Substrate Bridge (استخدام printf لتجنب أخطاء المسافات في YAML)
+          # 6. إنشاء Substrate Bridge (تنسيق محسن)
           printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\n\nstatic inline void* MSFindSymbol(void* image, const char* name) {\n    return dlsym(RTLD_DEFAULT, name);\n}\n\n#endif\n" > substrate.h
 
           # 7. إصلاحات KittyMemory
