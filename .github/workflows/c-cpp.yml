@@ -1,4 +1,4 @@
-name: Build Stable Non-JB iOS dylib
+name: Build Stable Non-JB iOS dylib (AI Patched)
 
 on:
   workflow_dispatch:
@@ -12,16 +12,73 @@ jobs:
     runs-on: macos-14
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Download Prebuilt Dobby (iOS arm64)
+      - name: Install tools
+        run: brew install cmake ninja
+
+      - name: Clone Dobby
+        run: git clone --depth=1 https://github.com/jmpews/Dobby.git
+
+      - name: AI Auto Patch Dobby for iOS ARM64
         run: |
-          mkdir Dobby
-          cd Dobby
-          curl -L -o dobby.zip https://github.com/jmpews/Dobby/releases/latest/download/dobby-ios-arm64.zip
-          unzip dobby.zip
-          cd ..
+          python3 << 'EOF'
+          import os, shutil, pathlib
+
+          base = pathlib.Path("Dobby")
+
+          # Remove unsupported architectures
+          shutil.rmtree(base / "source/InstructionRelocation/x86", ignore_errors=True)
+          shutil.rmtree(base / "source/InstructionRelocation/x64", ignore_errors=True)
+          shutil.rmtree(base / "source/Backend/KernelMode", ignore_errors=True)
+
+          # Remove problematic files
+          try:
+              os.remove(base / "source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c")
+          except:
+              pass
+
+          # Ensure TinySTL path exists
+          tinystl_src = base / "external/TinySTL"
+          tinystl_dst = base / "TINYSTL"
+
+          if tinystl_src.exists():
+              if tinystl_dst.exists():
+                  shutil.rmtree(tinystl_dst)
+              shutil.copytree(tinystl_src, tinystl_dst)
+
+          print("Dobby patched successfully for iOS ARM64")
+          EOF
+
+      - name: Build Dobby Static (ARM64 Clean)
+        run: |
+          set -e
+          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+
+          mkdir -p build_dobby
+
+          DOBBY_SOURCES=$(find Dobby/source \
+            -name "*.cpp" -o -name "*.c" -o -name "*.mm")
+
+          clang++ -arch arm64 \
+            -std=c++17 \
+            -isysroot "$SDK_PATH" \
+            -miphoneos-version-min=14.0 \
+            -O3 \
+            -fobjc-arc \
+            -c $DOBBY_SOURCES \
+            -IDobby/include \
+            -IDobby/source \
+            -IDobby/source/Backend \
+            -IDobby/source/Backend/UserMode \
+            -IDobby/source/InstructionRelocation/arm64 \
+            -IDobby/builtin-plugin \
+            -IDobby/builtin-plugin/SymbolResolver \
+            -IDobby/builtin-plugin/SymbolResolver/macho \
+            -IDobby/TINYSTL
+
+          ar rcs build_dobby/libdobby.a *.o
+          rm -f *.o
 
       - name: Create substrate shim
         run: |
@@ -44,7 +101,7 @@ jobs:
             -fobjc-arc \
             -I./Dobby/include \
             $SOURCES \
-            Dobby/lib/libdobby.a \
+            build_dobby/libdobby.a \
             -framework Foundation \
             -framework UIKit \
             -framework Security \
@@ -53,8 +110,7 @@ jobs:
             -ldl \
             -o ShadowCheats.dylib
 
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: ShadowCheats_dylib
           path: ShadowCheats.dylib
