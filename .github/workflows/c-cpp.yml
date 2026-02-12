@@ -1,4 +1,4 @@
-name: Build Stable iOS dylib (Final Clean)
+name: Build Stable iOS dylib (Clean Mode)
 
 on:
   workflow_dispatch:
@@ -57,7 +57,7 @@ jobs:
         run: |
           printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif" > substrate.h
 
-      - name: Build dylib
+      - name: Build dylib (Clean Mode)
         run: |
           set -e
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
@@ -69,8 +69,6 @@ jobs:
             ! -path "./Dobby/*" \
             ! -path "./build_dobby/*")
 
-          echo "$SOURCES"
-
           echo "===== BUILD START ====="
 
           clang++ -arch arm64 \
@@ -80,10 +78,13 @@ jobs:
             -miphoneos-version-min=14.0 \
             -O3 \
             -fobjc-arc \
-            -Wno-deprecated-declarations \
             -Wno-error \
+            -Wno-everything \
             -I. \
             -I./Dobby/include \
+            -I./ESP \
+            -I./KittyMemory \
+            -isystem ./SDK \
             $SOURCES \
             -Wl,-force_load,"$LIB_PATH" \
             -framework Foundation \
