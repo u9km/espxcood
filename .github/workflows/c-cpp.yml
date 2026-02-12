@@ -15,40 +15,37 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install Tools
-        run: brew install cmake ninja
-
       - name: Clone Dobby
         run: git clone --depth=1 https://github.com/jmpews/Dobby.git
 
-      - name: Build Dobby Static (iOS arm64)
+      - name: Build Dobby Static Manually (Stable)
         run: |
           set -e
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
 
           mkdir -p build_dobby
-          cd build_dobby
 
-          cmake ../Dobby \
-            -G Ninja \
-            -DCMAKE_SYSTEM_NAME=iOS \
-            -DCMAKE_OSX_SYSROOT=$SDK_PATH \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_SYSTEM_PROCESSOR=arm64 \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DCMAKE_BUILD_TYPE=Release
+          # جمع سورسات Dobby فقط (بدون tests / examples)
+          DOBBY_SOURCES=$(find Dobby/source \
+            -name "*.cpp" -o -name "*.c" -o -name "*.mm")
 
-          ninja
+          clang++ -arch arm64 \
+            -std=c++17 \
+            -isysroot "$SDK_PATH" \
+            -miphoneos-version-min=14.0 \
+            -O3 \
+            -fobjc-arc \
+            -c $DOBBY_SOURCES \
+            -IDobby/include \
+            -IDobby/source \
+            -IDobby/source/Backend \
+            -IDobby/source/Backend/UserMode \
+            -IDobby/builtin-plugin \
+            -IDobby/builtin-plugin/SymbolResolver \
+            -IDobby/builtin-plugin/SymbolResolver/macho
 
-          # تحديد مسار libdobby.a تلقائياً
-          cd ..
-          LIB_PATH=$(find build_dobby -name "libdobby.a" | head -n 1)
-          if [ -z "$LIB_PATH" ]; then
-            echo "libdobby.a not found!"
-            exit 1
-          fi
-          echo "LIB_PATH=$LIB_PATH" >> $GITHUB_ENV
+          ar rcs build_dobby/libdobby.a *.o
+          rm -f *.o
 
       - name: Create substrate shim
         run: |
@@ -71,7 +68,7 @@ jobs:
             -fobjc-arc \
             -I./Dobby/include \
             $SOURCES \
-            "$LIB_PATH" \
+            build_dobby/libdobby.a \
             -framework Foundation \
             -framework UIKit \
             -framework Security \
@@ -85,3 +82,4 @@ jobs:
         with:
           name: ShadowCheats_dylib
           path: ShadowCheats.dylib
+        
