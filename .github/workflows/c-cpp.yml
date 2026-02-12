@@ -17,73 +17,50 @@ jobs:
         run: |
           mkdir -p build
           
-          # 1. فك ضغط المجلدات المضغوطة المحلية
+          # 1. فك ضغط المجلدات المحلية
           if [ -f "esp.zip" ]; then unzip -q esp.zip; fi
           if [ -f "kittymemory.zip" ]; then unzip -q kittymemory.zip; fi
           if [ -f "sdk.zip" ]; then unzip -q sdk.zip; fi
           
-          # 2. تحميل محرك Hooking (Dobby)
+          # 2. تحميل Dobby
           echo "📥 Downloading Dobby..."
           curl -L -o dobby.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
-          if [ -s dobby.zip ]; then
-            unzip -q dobby.zip
-            mv Dobby-master Dobby
-            echo "✅ Dobby downloaded successfully."
-          else
-            echo "❌ Failed to download Dobby."
-            exit 1
-          fi
+          unzip -q dobby.zip
+          mv Dobby-master Dobby
 
-          # 3. تحميل TinySTL
-          echo "📥 Downloading TinySTL..."
-          curl -L -o TinySTL.zip https://github.com/zyj1989/TinySTL/archive/refs/heads/master.zip
-          if [ -s TinySTL.zip ]; then
-            unzip -q TinySTL.zip
-            mkdir -p Dobby/TINYSTL
-            cp -r TinySTL-master/include/* Dobby/TINYSTL/
-            echo "✅ TinySTL downloaded successfully."
-          else
-            echo "❌ Failed to download TinySTL."
-            exit 1
-          fi
-
-          # 4. تصحيح ملفات Resolver
+          # 3. تحميل TinySTL (استخدام رابط بديل مضمون) 🛠️
+          echo "📥 Downloading TinySTL from Mirror..."
+          # المستودع الأصلي لا يعمل، نستخدم نسخة احتياطية
+          git clone --depth 1 https://github.com/54shady/TinySTL.git
+          
+          # نسخ الملفات
+          mkdir -p Dobby/TINYSTL
+          cp -r TinySTL/include/* Dobby/TINYSTL/
+          
+          # 4. إعداد مسارات Dobby
           mkdir -p Dobby/source/dobby/common
           mkdir -p Dobby/source/dobby/logging
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/source/dobby/common/
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/logging/* Dobby/source/dobby/logging/
 
-          # 5. تحميل مكتبة fishhook
+          # 5. تحميل fishhook
           curl -L -o fishhook.h https://raw.githubusercontent.com/facebook/fishhook/master/fishhook.h
+          
+          # 6. إنشاء Substrate Bridge (تم إصلاح التنسيق) 🛠️
+          # نستخدم printf لتجنب مشاكل المسافات في EOF
+          printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\n\nstatic inline void* MSFindSymbol(void* image, const char* name) {\n    return dlsym(RTLD_DEFAULT, name);\n}\n\n#endif\n" > substrate.h
 
-          # 6. إنشاء Substrate Faux بشكل صحيح (تم تصحيح المسافات هنا)
-          cat <<EOF > substrate.h
-          #ifndef SUBSTRATE_H
-          #define SUBSTRATE_H
-          #include "Dobby/include/dobby.h"
-          #include <mach-o/dyld.h>
-          #include <dlfcn.h>
-          
-          #define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)
-          
-          static inline void* MSFindSymbol(void* image, const char* name) {
-              return dlsym(RTLD_DEFAULT, name);
-          }
-          
-          #endif
-          EOF
-
-          # 7. إصلاح KittyMemory
+          # 7. إصلاحات KittyMemory
           if [ -f "KittyMemory/KittyMemory.cpp" ]; then
             sed -i '' 's/sprintf(&buffer\[i \* 2\], "%02X", (unsigned char) temp\[i\]);/snprintf(\&buffer\[i \* 2\], 3, "%02X", (unsigned char) temp\[i\]);/g' KittyMemory/KittyMemory.cpp
           fi
 
-          # 8. إصلاح Pointer Arithmetic في Dobby
+          # 8. إصلاحات Dobby
           if [ -f "Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c" ]; then
             sed -i '' 's/sys_icache_invalidate(start, end - start);/sys_icache_invalidate((void *)start, (char *)end - (char *)start);/g' Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c
           fi
 
-          # 9. إصلاحات SDK التلقائية
+          # 9. إصلاحات SDK
           if [ -f "SDK/PUBGM_SAQER_CoreUObject_structs.hpp" ]; then
             sed -i '' 's/char buffer\[25\];/char buffer\[26\];/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
             sed -i '' 's/(const char\*)(int)/(const char*)(uintptr_t)/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
