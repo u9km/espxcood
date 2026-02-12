@@ -47,7 +47,7 @@ jobs:
             exit 1
           fi
 
-          # 4. تصحيح ملفات Resolver
+          # 4. تصحيح ملفات Resolver (المسارات الدقيقة للـ Includes)
           mkdir -p Dobby/source/dobby/common
           mkdir -p Dobby/source/dobby/logging
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/source/dobby/common/
@@ -75,7 +75,7 @@ EOF
 
           # 7. إصلاح KittyMemory
           if [ -f "KittyMemory/KittyMemory.cpp" ]; then
-            sed -i '' 's/sprintf(&buffer\[i \* 2\], "%02X", (unsigned char) temp\[i\]);/snprintf(&buffer\[i \* 2\], 3, "%02X", (unsigned char) temp\[i\]);/g' KittyMemory/KittyMemory.cpp
+            sed -i '' 's/sprintf(&buffer\[i \* 2\], "%02X", (unsigned char) temp\[i\]);/snprintf(\&buffer\[i \* 2\], 3, "%02X", (unsigned char) temp\[i\]);/g' KittyMemory/KittyMemory.cpp
           fi
 
           # 8. إصلاح Pointer Arithmetic في Dobby
