@@ -13,55 +13,39 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: AI-Powered Dependency Setup
+      - name: Prepare Local Files (Setup Everything)
         run: |
           mkdir -p build
           
-          # 1. فك ضغط الملفات المحلية (إن وجدت في المستودع)
-          [ -f "ESP.zip" ] && unzip -q ESP.zip
-          [ -f "KittyMemory.zip" ] && unzip -q KittyMemory.zip
-          [ -f "SDK.zip" ] && unzip -q SDK.zip
+          echo "📦 Extracting local zip files..."
+          # 1. فك ضغط جميع الملفات المرفوعة في المستودع
+          unzip -q ESP.zip
+          unzip -q KittyMemory.zip
+          unzip -q SDK.zip
+          unzip -q Dobby-master.zip
+          unzip -q TinySTL-master.zip
           
-          # 2. تحميل Dobby Source (بما أن هذا الرابط يعمل)
-          echo "📥 Downloading Dobby..."
-          curl -L -o dobby_src.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
-          unzip -q dobby_src.zip
+          echo "📂 Organizing Dobby and TinySTL..."
+          # 2. إعادة تسمية مجلد Dobby ليطابق مسارات الكود
           mv Dobby-master Dobby
-          echo "✅ Dobby prepared."
-
-          # 3. تحميل TinySTL (حل ذكي: تجربة عدة روابط + فحص حجم الملف)
-          echo "📥 Downloading TinySTL..."
           
-          # محاولة تحميل فرع master
-          curl -L -o tinystl_src.zip https://github.com/kov4l3nko/TinySTL/archive/refs/heads/master.zip
-          
-          # فحص حجم الملف (إذا كان صغيراً، الرابط تالف)
-          FILESIZE=$(stat -f%z "tinystl_src.zip")
-          if [ "$FILESIZE" -lt 1000 ]; then
-            echo "⚠️ Master branch not found, trying Main branch..."
-            curl -L -o tinystl_src.zip https://github.com/kov4l3nko/TinySTL/archive/refs/heads/main.zip
-          fi
-          
-          unzip -q tinystl_src.zip
-          
-          # نقل ملفات TinySTL للمسار الصحيح (التعامل مع اختلاف أسماء المجلدات)
+          # 3. نقل كل ملفات ومجلدات TinySTL إلى داخل مسار Dobby المخصص لها
           mkdir -p Dobby/TINYSTL
-          if [ -d "TinySTL-master" ]; then
-            cp -r TinySTL-master/include/* Dobby/TINYSTL/
-          elif [ -d "TinySTL-main" ]; then
-            cp -r TinySTL-main/include/* Dobby/TINYSTL/
-          fi
-          echo "✅ TinySTL prepared."
-
-          # 4. إنشاء ملف substrate.h (صيغة آمنة)
+          # هذا السطر ينقل الملفات بذكاء سواء كانت داخل مجلد include أو متناثرة
+          cp -r TinySTL-master/include/* Dobby/TINYSTL/ 2>/dev/null || cp -r TinySTL-master/* Dobby/TINYSTL/
+          
+          echo "📝 Creating substrate.h..."
+          # 4. إنشاء ملف substrate.h
           printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif" > substrate.h
 
+          echo "🔧 Setting up Resolvers..."
           # 5. تجهيز مسارات الـ Resolver لـ Dobby
           mkdir -p Dobby/source/dobby/common
           mkdir -p Dobby/source/dobby/logging
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/source/dobby/common/ 2>/dev/null || true
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/logging/* Dobby/source/dobby/logging/ 2>/dev/null || true
 
+          echo "🩹 Applying Patches..."
           # 6. تطبيق الإصلاحات البرمجية (Patching)
           [ -f "KittyMemory/KittyMemory.cpp" ] && sed -i '' 's/sprintf(&buffer\[i \* 2\], "%02X", (unsigned char) temp\[i\]);/snprintf(\&buffer\[i \* 2\], 3, "%02X", (unsigned char) temp\[i\]);/g' KittyMemory/KittyMemory.cpp
           [ -f "Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c" ] && sed -i '' 's/sys_icache_invalidate(start, end - start);/sys_icache_invalidate((void *)start, (char *)end - (char *)start);/g' Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c
@@ -70,11 +54,12 @@ jobs:
         run: |
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           
-          # البحث عن ملفات السورس مع استبعاد ملفات x86
+          # البحث عن ملفات السورس مع استبعاد ملفات x86 ومعالجة المسارات
           SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
             | grep -v "Dobby/example" | grep -v "Dobby/tests" \
             | grep -v "source/InstructionRelocation/x86" \
-            | grep -v "source/TrampolineBridge/x86")
+            | grep -v "source/TrampolineBridge/x86" \
+            | grep -v "TinySTL-master") # استبعاد المجلد القديم بعد النقل
 
           clang++ -arch arm64 -dynamiclib -std=c++17 \
             -isysroot "$SDK_PATH" \
