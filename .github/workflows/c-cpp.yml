@@ -22,10 +22,10 @@ jobs:
           if [ -f "kittymemory.zip" ]; then unzip -q kittymemory.zip; fi
           if [ -f "sdk.zip" ]; then unzip -q sdk.zip; fi
           
-          # 2. تحميل محرك Hooking (Dobby) - الأفضل للاستقرار بدون جلبريك
-          curl -L -o dobby.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
+          # 2. تحميل محرك Hooking (Dobby) - نسخة مستقرة ومحددة 🛠️
+          curl -L -o dobby.zip https://github.com/jmpews/Dobby/archive/refs/tags/v1.1.0.zip
           unzip -q dobby.zip
-          mv Dobby-master Dobby
+          mv Dobby-1.1.0 Dobby
 
           # 3. تحميل مكتبة fishhook (تحتاجها KittyMemory)
           curl -L -o fishhook.h https://raw.githubusercontent.com/facebook/fishhook/master/fishhook.h
@@ -113,7 +113,6 @@ jobs:
             -I./ESP \
             -IDobby/include \
             -IDobby/source \
-            -IDobby/builtin-plugin/SymbolResolver \
             -IDobby/source/dobby \
             -IDobby/source/Backend/UserMode/ExecMemory \
             -IDobby/source/Backend/UserMode/MultiThreadSupport \
