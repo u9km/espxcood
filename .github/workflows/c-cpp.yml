@@ -17,44 +17,47 @@ jobs:
         run: |
           mkdir -p build
           
-          # 1. فك ضغط الملفات المحلية (إن وجدت في المستودع)
+          # 1. فك ضغط الملفات المحلية (إن وجدت)
           [ -f "ESP.zip" ] && unzip -q ESP.zip
           [ -f "KittyMemory.zip" ] && unzip -q KittyMemory.zip
           [ -f "SDK.zip" ] && unzip -q SDK.zip
           
-          # 2. تحميل Dobby Source (بما أن هذا الرابط يعمل جيداً)
+          # 2. تحميل Dobby Source باستخدام wget (أكثر استقراراً)
           echo "📥 Downloading Dobby..."
-          curl -L -o dobby_src.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
-          unzip -q dobby_src.zip
-          mv Dobby-master Dobby
-          echo "✅ Dobby prepared."
-
-          # 3. تحميل TinySTL باستخدام git clone (الطريقة الأضمن)
-          echo "📥 Cloning TinySTL..."
-          # إزالة أي مجلد قديم لضمان النظافة
-          rm -rf TinySTL
-          git clone --depth 1 https://github.com/kov4l3nko/TinySTL.git
-          
-          # التحقق من نجاح الـ clone ونقل الملفات
-          if [ -d "TinySTL" ]; then
-            mkdir -p Dobby/TINYSTL
-            cp -r TinySTL/include/* Dobby/TINYSTL/
-            echo "✅ TinySTL prepared."
+          wget -q https://github.com/jmpews/Dobby/archive/refs/heads/master.zip -O dobby_src.zip
+          if [ -s dobby_src.zip ]; then
+            unzip -q dobby_src.zip
+            mv Dobby-master Dobby
+            echo "✅ Dobby prepared."
           else
-            echo "❌ TinySTL clone failed!"
+            echo "❌ Dobby download failed!"
             exit 1
           fi
 
-          # 4. إنشاء ملف substrate.h (بصيغة متوافقة مع YAML)
+          # 3. تحميل TinySTL باستخدام wget
+          echo "📥 Downloading TinySTL..."
+          wget -q https://github.com/kov4l3nko/TinySTL/archive/refs/heads/master.zip -O tinystl_src.zip
+          
+          if [ -s tinystl_src.zip ]; then
+            unzip -q tinystl_src.zip
+            mkdir -p Dobby/TINYSTL
+            cp -r TinySTL-master/include/* Dobby/TINYSTL/
+            echo "✅ TinySTL prepared."
+          else
+            echo "❌ TinySTL download failed!"
+            exit 1
+          fi
+
+          # 4. إنشاء ملف substrate.h (صيغة آمنة)
           printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif" > substrate.h
 
-          # 5. تجهيز مسارات الـ Resolver لـ Dobby
+          # 5. تجهيز مسارات Resolver
           mkdir -p Dobby/source/dobby/common
           mkdir -p Dobby/source/dobby/logging
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/source/dobby/common/ 2>/dev/null || true
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/logging/* Dobby/source/dobby/logging/ 2>/dev/null || true
 
-          # 6. تطبيق الإصلاحات البرمجية (Patching)
+          # 6. تطبيق الإصلاحات
           [ -f "KittyMemory/KittyMemory.cpp" ] && sed -i '' 's/sprintf(&buffer\[i \* 2\], "%02X", (unsigned char) temp\[i\]);/snprintf(\&buffer\[i \* 2\], 3, "%02X", (unsigned char) temp\[i\]);/g' KittyMemory/KittyMemory.cpp
           [ -f "Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c" ] && sed -i '' 's/sys_icache_invalidate(start, end - start);/sys_icache_invalidate((void *)start, (char *)end - (char *)start);/g' Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c
 
@@ -62,7 +65,7 @@ jobs:
         run: |
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           
-          # البحث عن ملفات السورس مع استبعاد ملفات x86 ومعالجة المسارات
+          # تجميع الملفات
           SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
             | grep -v "Dobby/example" | grep -v "Dobby/tests" \
             | grep -v "source/InstructionRelocation/x86" \
