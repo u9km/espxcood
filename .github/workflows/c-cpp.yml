@@ -51,11 +51,6 @@ jobs:
           cd ..
 
           LIB_PATH=$(find build_dobby -name "libdobby.a" | head -n 1)
-          if [ -z "$LIB_PATH" ]; then
-            echo "libdobby.a not found"
-            exit 1
-          fi
-
           echo "LIB_PATH=$LIB_PATH" >> $GITHUB_ENV
 
       - name: Create substrate shim
@@ -72,11 +67,6 @@ jobs:
             ! -path "./Dobby/*" \
             ! -path "./build_dobby/*")
 
-          if [ -z "$SOURCES" ]; then
-            echo "No source files found."
-            exit 1
-          fi
-
           clang++ -arch arm64 \
             -dynamiclib \
             -std=c++17 \
@@ -84,6 +74,7 @@ jobs:
             -miphoneos-version-min=14.0 \
             -O3 \
             -fobjc-arc \
+            -I. \
             -I./Dobby/include \
             $SOURCES \
             -Wl,-force_load,"$LIB_PATH" \
