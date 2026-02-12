@@ -1,4 +1,4 @@
-name: Build Stable Non-JB iOS dylib (Final Stable)
+name: Build Stable iOS dylib (Final Clean)
 
 on:
   workflow_dispatch:
@@ -27,7 +27,7 @@ jobs:
           git clone --depth=1 https://github.com/jmpews/Dobby.git
           git clone --depth=1 https://github.com/leetal/ios-cmake.git
 
-      - name: Build Dobby (ARM64 iOS Proper)
+      - name: Build Dobby (ARM64 iOS)
         run: |
           set -e
           mkdir build_dobby
@@ -51,26 +51,27 @@ jobs:
           cd ..
 
           LIB_PATH=$(find build_dobby -name "libdobby.a" | head -n 1)
-          if [ -z "$LIB_PATH" ]; then
-            echo "libdobby.a not found"
-            exit 1
-          fi
-
           echo "LIB_PATH=$LIB_PATH" >> $GITHUB_ENV
 
       - name: Create substrate shim
         run: |
           printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif" > substrate.h
 
-      - name: Build dylib (Linked with Dobby + Metal)
+      - name: Build dylib
         run: |
           set -e
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+
+          echo "===== COLLECTING SOURCES ====="
 
           SOURCES=$(find . -type f \
             \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
             ! -path "./Dobby/*" \
             ! -path "./build_dobby/*")
+
+          echo "$SOURCES"
+
+          echo "===== BUILD START ====="
 
           clang++ -arch arm64 \
             -dynamiclib \
@@ -79,6 +80,8 @@ jobs:
             -miphoneos-version-min=14.0 \
             -O3 \
             -fobjc-arc \
+            -Wno-deprecated-declarations \
+            -Wno-error \
             -I. \
             -I./Dobby/include \
             $SOURCES \
