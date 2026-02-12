@@ -47,7 +47,7 @@ jobs:
             exit 1
           fi
 
-          # 4. تصحيح ملفات Resolver (المسارات الدقيقة للـ Includes)
+          # 4. تصحيح ملفات Resolver
           mkdir -p Dobby/source/dobby/common
           mkdir -p Dobby/source/dobby/logging
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/source/dobby/common/
@@ -56,22 +56,22 @@ jobs:
           # 5. تحميل مكتبة fishhook
           curl -L -o fishhook.h https://raw.githubusercontent.com/facebook/fishhook/master/fishhook.h
 
-          # 6. إنشاء Substrate Faux بشكل صحيح
+          # 6. إنشاء Substrate Faux بشكل صحيح (تم تصحيح المسافات هنا)
           cat <<EOF > substrate.h
-#ifndef SUBSTRATE_H
-#define SUBSTRATE_H
-#include "Dobby/include/dobby.h"
-#include <mach-o/dyld.h>
-#include <dlfcn.h>
-
-#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)
-
-static inline void* MSFindSymbol(void* image, const char* name) {
-    return dlsym(RTLD_DEFAULT, name);
-}
-
-#endif
-EOF
+          #ifndef SUBSTRATE_H
+          #define SUBSTRATE_H
+          #include "Dobby/include/dobby.h"
+          #include <mach-o/dyld.h>
+          #include <dlfcn.h>
+          
+          #define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)
+          
+          static inline void* MSFindSymbol(void* image, const char* name) {
+              return dlsym(RTLD_DEFAULT, name);
+          }
+          
+          #endif
+          EOF
 
           # 7. إصلاح KittyMemory
           if [ -f "KittyMemory/KittyMemory.cpp" ]; then
