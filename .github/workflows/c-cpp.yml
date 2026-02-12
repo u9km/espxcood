@@ -3,7 +3,7 @@ name: Build Stable Non-JB iOS dylib
 on:
   workflow_dispatch:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
 
 jobs:
   build:
@@ -13,43 +13,45 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Prepare Files (Clone)
+      - name: Prepare Files (Setup Dobby & Dependencies)
         run: |
           mkdir -p build
           
-          # 1. تحميل TinySTL (استخدام git clone) 📥
-          echo "📥 Cloning TinySTL..."
-          rm -rf TinySTL
-          git clone --depth 1 https://github.com/kov4l3nko/TinySTL.git
+          # 1. فك ضغط المجلدات المضغوطة المحلية (إذا وجدت) 📦
+          if [ -f "esp.zip" ]; then unzip -q esp.zip; fi
+          if [ -f "kittymemory.zip" ]; then unzip -q kittymemory.zip; fi
+          if [ -f "sdk.zip" ]; then unzip -q sdk.zip; fi
           
-          if [ -d "TinySTL" ]; then
-            echo "✅ TinySTL cloned."
+          # 2. التحقق من وجود مجلد Dobby (الملفات العادية) 📂
+          echo "📂 Checking for Dobby folder..."
+          if [ -d "Dobby" ]; then
+            echo "✅ Dobby folder found."
           else
-            echo "❌ Failed to clone TinySTL."
+            echo "❌ Dobby folder not found! Please ensure Dobby files are in a folder named 'Dobby' in the repository root."
             exit 1
           fi
-          
-          # 2. تحميل مكتبة fishhook
-          curl -L -o fishhook.h https://raw.githubusercontent.com/facebook/fishhook/master/fishhook.h
-          
-          # 3. إعداد مسارات Dobby يدوياً (حيث أنك رفعت المجلد Dobby مباشرة)
-          if [ -d "Dobby" ]; then
-             echo "📂 Dobby folder found."
-          else
-             echo "❌ Dobby folder not found!"
-             exit 1
-          fi
 
+          # 3. تحميل TinySTL (استخدام curl بدلاً من git clone لتجنب الأخطاء) 📥
+          echo "📥 Downloading TinySTL..."
+          curl -L -o TinySTL.zip https://github.com/kov4l3nko/TinySTL/archive/refs/heads/master.zip
+          unzip -q TinySTL.zip
+          
           # 4. نقل ملفات TinySTL إلى Dobby كما يتوقع الـ CMake
           mkdir -p Dobby/TINYSTL
-          cp -r TinySTL/include/* Dobby/TINYSTL/
+          cp -r TinySTL-master/include/* Dobby/TINYSTL/
           
-          # 5. إصلاحات Pointer Arithmetic في Dobby
+          # 5. تحميل مكتبة fishhook
+          curl -L -o fishhook.h https://raw.githubusercontent.com/facebook/fishhook/master/fishhook.h
+          # نقل fishhook إلى Dobby
+          mkdir -p Dobby/TINYSTL/fishhook
+          cp fishhook.h Dobby/TINYSTL/fishhook/
+          
+          # 6. إصلاحات Pointer Arithmetic في Dobby
           if [ -f "Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c" ]; then
             sed -i '' 's/sys_icache_invalidate(start, end - start);/sys_icache_invalidate((void *)start, (char *)end - (char *)start);/g' Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c
           fi
           
-          # 6. إصلاح KittyMemory (إذا وجد)
+          # 7. إصلاح KittyMemory (إذا وجد)
           if [ -f "KittyMemory/KittyMemory.cpp" ]; then
             sed -i '' 's/sprintf(&buffer\[i \* 2\], "%02X", (unsigned char) temp\[i\]);/snprintf(\&buffer\[i \* 2\], 3, "%02X", (unsigned char) temp\[i\]);/g' KittyMemory/KittyMemory.cpp
           fi
@@ -69,7 +71,6 @@ jobs:
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT=$SDK_PATH \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_IOS_INSTALL_COMBINED=YES \
             -DCMAKE_BUILD_TYPE=Release \
             -DDOBBY_DEBUG=OFF \
             -DNearBranch=ON \
