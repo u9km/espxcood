@@ -48,6 +48,10 @@ jobs:
             cp -r TinySTL/* Dobby/TINYSTL/
           fi
 
+          echo "🔧 Fix size_t properly in TinySTL..."
+          find Dobby/TINYSTL -type f -name "*.h" -exec \
+            sed -i '' '1s;^;#include <stddef.h>\n;' {} +
+
           echo "🔧 Fix missing internal headers..."
           mkdir -p Dobby/common
           mkdir -p Dobby/logging
@@ -83,7 +87,6 @@ jobs:
             -std=c++17 \
             -w \
             -fpermissive \
-            -include cstddef \
             -isysroot "$SDK_PATH" \
             -miphoneos-version-min=14.0 \
             -O3 \
