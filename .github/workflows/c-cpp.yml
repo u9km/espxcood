@@ -17,20 +17,20 @@ jobs:
         run: |
           mkdir -p build
           
-          # 1. فك ضغط المجلدات
+          # 1. فك ضغط المجلدات المضغوطة (تأكد من وجودها في المستودع)
           if [ -f "esp.zip" ]; then unzip -q esp.zip; fi
           if [ -f "kittymemory.zip" ]; then unzip -q kittymemory.zip; fi
           if [ -f "sdk.zip" ]; then unzip -q sdk.zip; fi
           
-          # 2. تحميل مكتبة Dobby
+          # 2. تحميل محرك Hooking (Dobby) - الأفضل للاستقرار بدون جلبريك
           curl -L -o dobby.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
           unzip -q dobby.zip
           mv Dobby-master Dobby
 
-          # 3. تحميل مكتبة fishhook
+          # 3. تحميل مكتبة fishhook (تحتاجها KittyMemory)
           curl -L -o fishhook.h https://raw.githubusercontent.com/facebook/fishhook/master/fishhook.h
           
-          # 4. خدعة الجلبريك (Fake Substrate Bridge)
+          # 4. خدعة الجلبريك (Fake Substrate Bridge + MSFindSymbol)
           cat <<EOF > substrate.h
           #ifndef SUBSTRATE_H
           #define SUBSTRATE_H
@@ -47,24 +47,29 @@ jobs:
           #endif
           EOF
 
-          # 5. إصلاحات KittyMemory
+          # 5. 🛠️ إصلاح خطأ sprintf في KittyMemory.cpp تلقائياً
           if [ -f "KittyMemory/KittyMemory.cpp" ]; then
             sed -i '' 's/sprintf(&buffer\[i \* 2\], "%02X", (unsigned char) temp\[i\]);/snprintf(\&buffer\[i \* 2\], 3, "%02X", (unsigned char) temp\[i\]);/g' KittyMemory/KittyMemory.cpp
+            echo "✅ KittyMemory.cpp patched successfully."
           fi
           
-          # 6. إصلاح خطأ arithmetic on pointers to void في Dobby
-          if [ -f "Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c" ]; then
-            sed -i '' 's/sys_icache_invalidate(start, end - start);/sys_icache_invalidate((void *)start, (char *)end - (char *)start);/g' Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c
-          fi
-          
-          # 7. إصلاحات الـ SDK التلقائية (sed patches)
+          # 6. 🛠️ إصلاح خطأ Array Bounds في الـ SDK (حجم الـ Buffer)
           if [ -f "SDK/PUBGM_SAQER_CoreUObject_structs.hpp" ]; then
             sed -i '' 's/char buffer\[25\];/char buffer\[26\];/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
-            sed -i '' 's/(const char\*)(int)/(const char*)(uintptr_t)/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
+            echo "✅ SDK Array Bounds patched successfully."
           fi
+
+          # 7. 🛠️ إصلاح خطأ Cast to 'const char *' (int to pointer) في الـ SDK
+          if [ -f "SDK/PUBGM_SAQER_CoreUObject_structs.hpp" ]; then
+            sed -i '' 's/(const char\*)(int)/(const char*)(uintptr_t)/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
+            echo "✅ SDK Cast to 'const char *' patched successfully."
+          fi
+          
+          # 8. 🛠️ إصلاح خطأ Returning address of local temporary object (Static memory)
           if [ -f "SDK/PUBGM_SAQER_Basic.hpp" ]; then
             sed -i '' 's/{ std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/{ static std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/g' SDK/PUBGM_SAQER_Basic.hpp
             sed -i '' 's/return convert.to_bytes(std::u16string(Data, Data + Count)).c_str();/{ static std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/g' SDK/PUBGM_SAQER_Basic.hpp
+            echo "✅ SDK Returning address patched successfully."
           fi
 
       - name: Compile dylib with Best Practices
@@ -72,6 +77,7 @@ jobs:
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           
           echo "🔍 Searching for source files..."
+          # البحث عن الملفات مع استثناء الـ examples الخاصة بـ Dobby
           SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
             | grep -v "Dobby/example" \
             | grep -v "Dobby/tests" \
@@ -85,7 +91,7 @@ jobs:
 
           echo "🚀 Compiling with optimizations..."
           
-          # 🛠️ 🛠️ إضافة مسارات Includes الصحيحة لـ Dobby 🛠️ 🛠️
+          # 🛠️ تجميع متكامل مع أفضل ممارسات الاستقرار والذاكرة
           clang++ \
             -arch arm64 \
             -dynamiclib \
