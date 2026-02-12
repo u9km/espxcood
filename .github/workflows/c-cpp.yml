@@ -18,34 +18,14 @@ jobs:
       - name: Prepare Sources
         run: |
           set -e
-          export LC_ALL=C
-          export LANG=C
 
           mkdir -p build
 
-          unzip -q ESP.zip || true
-          unzip -q KittyMemory.zip || true
-          unzip -q SDK.zip || true
-          unzip -q Dobby-master.zip || unzip -q Dobby-main.zip || true
-          unzip -q TinySTL-master.zip || unzip -q TinySTL-main.zip || true
+          # Clone dependencies مباشرة
+          git clone --depth=1 https://github.com/jmpews/Dobby.git Dobby
+          git clone --depth=1 https://github.com/zouxiaohang/TinySTL.git TinySTL
 
-          rm -rf ESP/TINYSTL || true
-          rm -rf TINYSTL || true
-
-          DOBBY_DIR=$(find . -maxdepth 1 -type d -iname "Dobby*" | head -n 1)
-          if [ -z "$DOBBY_DIR" ]; then
-            echo "Dobby not found"
-            exit 1
-          fi
-          mv "$DOBBY_DIR" Dobby
-
-          TINYSTL_DIR=$(find . -maxdepth 1 -type d -iname "TinySTL*" | head -n 1)
-          if [ -z "$TINYSTL_DIR" ]; then
-            echo "TinySTL not found"
-            exit 1
-          fi
-          mv "$TINYSTL_DIR" TinySTL
-
+          # نسخ TinySTL داخل Dobby
           mkdir -p Dobby/TINYSTL
           if [ -d TinySTL/include ]; then
             cp -r TinySTL/include/* Dobby/TINYSTL/
@@ -53,6 +33,7 @@ jobs:
             cp -r TinySTL/* Dobby/TINYSTL/
           fi
 
+          # Fix internal paths
           mkdir -p Dobby/common
           mkdir -p Dobby/logging
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/common/ 2>/dev/null || true
@@ -61,6 +42,7 @@ jobs:
           mkdir -p Dobby/source/MultiThreadSupport
           cp -r Dobby/source/Backend/UserMode/MultiThreadSupport/* Dobby/source/MultiThreadSupport/ 2>/dev/null || true
 
+          # Create substrate shim
           printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif" > substrate.h
 
       - name: Compile iOS dylib
