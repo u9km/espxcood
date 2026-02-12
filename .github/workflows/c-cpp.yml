@@ -15,16 +15,19 @@ jobs:
       - name: Install Tools
         run: brew install cmake ninja
 
-      - name: Clone Dobby + iOS Toolchain
+      - name: Clone Dobby + Toolchain
         run: |
           git clone --depth=1 https://github.com/jmpews/Dobby.git
           git clone --depth=1 https://github.com/leetal/ios-cmake.git
 
-      - name: Build Dobby Properly (ARM64 only)
+      - name: Build Dobby (Fix C/C++ Compiler Mismatch)
         run: |
           set -e
           mkdir build_dobby
           cd build_dobby
+
+          export CC=clang
+          export CXX=clang++
 
           cmake ../Dobby \
             -G Ninja \
@@ -35,6 +38,8 @@ jobs:
             -DENABLE_BITCODE=0 \
             -DDOBBY_BUILD_TEST=OFF \
             -DDOBBY_BUILD_EXAMPLE=OFF \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_BUILD_TYPE=Release
 
           ninja
