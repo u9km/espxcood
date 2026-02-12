@@ -3,7 +3,9 @@ name: Build Stable Non-JB iOS dylib
 on:
   workflow_dispatch:
   push:
-    branches: [ "main", "master" ]
+    branches:
+      - main
+      - master
 
 jobs:
   build:
@@ -13,7 +15,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Prepare Sources (Final Stable Fix)
+      - name: Prepare Sources
         run: |
           set -e
           export LC_ALL=C
@@ -21,28 +23,30 @@ jobs:
 
           mkdir -p build
 
-          echo "📦 Extracting archives..."
+          echo "Extracting archives..."
           unzip -q ESP.zip || true
           unzip -q KittyMemory.zip || true
           unzip -q SDK.zip || true
           unzip -q Dobby-master.zip || unzip -q Dobby-main.zip || true
           unzip -q TinySTL-master.zip || unzip -q TinySTL-main.zip || true
 
-          echo "📂 Removing conflicting TinySTL..."
           rm -rf ESP/TINYSTL || true
           rm -rf TINYSTL || true
 
-          echo "📂 Detecting Dobby..."
           DOBBY_DIR=$(find . -maxdepth 1 -type d -iname "Dobby*" | head -n 1)
-          [ -z "$DOBBY_DIR" ] && echo "❌ Dobby not found!" && exit 1
+          if [ -z "$DOBBY_DIR" ]; then
+            echo "Dobby not found"
+            exit 1
+          fi
           mv "$DOBBY_DIR" Dobby
 
-          echo "📂 Detecting TinySTL..."
           TINYSTL_DIR=$(find . -maxdepth 1 -type d -iname "TinySTL*" | head -n 1)
-          [ -z "$TINYSTL_DIR" ] && echo "❌ TinySTL not found!" && exit 1
+          if [ -z "$TINYSTL_DIR" ]; then
+            echo "TinySTL not found"
+            exit 1
+          fi
           mv "$TINYSTL_DIR" TinySTL
 
-          echo "📦 Installing TinySTL into Dobby..."
           mkdir -p Dobby/TINYSTL
           if [ -d TinySTL/include ]; then
             cp -r TinySTL/include/* Dobby/TINYSTL/
@@ -50,7 +54,6 @@ jobs:
             cp -r TinySTL/* Dobby/TINYSTL/
           fi
 
-          echo "🔧 Proper TinySTL type fix..."
           find Dobby/TINYSTL -type f -name "*.h" -exec \
             sed -i '' '1i\
 #include <cstddef>\
@@ -59,7 +62,6 @@ using std::size_t;\
 using std::ptrdiff_t;\
 ' {} +
 
-          echo "🔧 Fix internal Dobby paths..."
           mkdir -p Dobby/common
           mkdir -p Dobby/logging
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/common/ 2>/dev/null || true
@@ -68,7 +70,6 @@ using std::ptrdiff_t;\
           mkdir -p Dobby/source/MultiThreadSupport
           cp -r Dobby/source/Backend/UserMode/MultiThreadSupport/* Dobby/source/MultiThreadSupport/ 2>/dev/null || true
 
-          echo "📝 Creating substrate shim..."
           printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif" > substrate.h
 
       - name: Compile iOS dylib
@@ -76,11 +77,11 @@ using std::ptrdiff_t;\
           set -e
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
 
-          echo "🔎 Collecting source files..."
+          echo "Collecting source files..."
           SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
             | grep -vE "test|Test|example|Example|tests|Tests|x86|x64|Profiler")
 
-          echo "🚀 Building dylib..."
+          echo "Building dylib..."
           clang++ -arch arm64 \
             -dynamiclib \
             -std=c++17 \
@@ -113,9 +114,9 @@ using std::ptrdiff_t;\
             -ldl \
             -o build/ShadowCheats.dylib
 
-          echo "✅ Build finished successfully."
+          echo "Build finished successfully."
 
-      - name: Upload Artifact 📦
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ShadowCheats_dylib
