@@ -22,7 +22,7 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/jmpews/Dobby.git
 
-      - name: Build Dobby (iOS arm64)
+      - name: Build Dobby (iOS arm64 fixed)
         run: |
           set -e
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
@@ -31,10 +31,14 @@ jobs:
           cd build_dobby
 
           cmake ../Dobby \
+            -G "Unix Makefiles" \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT=$SDK_PATH \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_SYSTEM_PROCESSOR=arm64 \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+            -DDOBBY_GENERATE_SHARED=OFF \
+            -DDOBBY_DEBUG=OFF \
             -DCMAKE_BUILD_TYPE=Release
 
           make -j4
