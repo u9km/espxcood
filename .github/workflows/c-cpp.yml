@@ -13,7 +13,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Prepare and Force-Fix
+      - name: Prepare and Switch STL
         run: |
           mkdir -p build
           export LC_ALL=C
@@ -23,23 +23,20 @@ jobs:
           unzip -q ESP.zip && unzip -q KittyMemory.zip && unzip -q SDK.zip
           unzip -q Dobby-master.zip && unzip -q TinySTL-master.zip
           
-          echo "📂 Organizing Dobby and TinySTL..."
+          echo "📂 Organizing Dobby..."
           mv Dobby-master Dobby
-          mkdir -p Dobby/TINYSTL
-          cp -r TinySTL-master/include/* Dobby/TINYSTL/ 2>/dev/null || cp -r TinySTL-master/* Dobby/TINYSTL/
           
-          echo "🧹 Nuclear Cleaning of Broken Files..."
-          # حذف المجلدات والملفات التي تسبب أخطاء مفقودة أو توافق نهائياً
-          rm -rf Dobby/tests Dobby/example TinySTL-master/Test TinySTL-master/Profiler 
-          rm -rf Dobby/TINYSTL/TINYSTL/Detail Dobby/TINYSTL/TINYSTL/Profiler
-          
-          echo "🤖 Precision Source Repair (Patching Algorithm.h)..."
-          
-          # إصلاح Algorithm.h (إضافة typename المفقودة)
-          find Dobby/TINYSTL -name "Algorithm.h" -exec sed -i '' 's/typedef iterator_traits/typedef typename iterator_traits/g' {} +
-          find Dobby/TINYSTL -name "Algorithm.h" -exec sed -i '' 's/less<TinySTL::iterator_traits/less<typename TinySTL::iterator_traits/g' {} +
+          echo "🧹 Nuclear Cleaning of TinySTL..."
+          # حذف TinySTL تماماً، لن نستخدمها
+          rm -rf Dobby/TINYSTL TinySTL-master
 
-          # 3. إصلاح مصفوفات الـ SDK (إصلاح النمط القديم)
+          echo "🤖 Patching Dobby to use System STL..."
+          # تحديث ملفات Dobby لتستخدم STL الخاصة بالنظام بدلاً من TinySTL
+          find Dobby/source -type f -name "*.cpp" -exec sed -i '' 's/TinySTL\:\://g' {} +
+          find Dobby/source -type f -name "*.h" -exec sed -i '' 's/TinySTL\:\://g' {} +
+          find Dobby/source -type f -name "*.cpp" -exec sed -i '' 's/#include ".*TinySTL.*"/#include <vector>\n#include <string>\n#include <algorithm>/g' {} +
+          
+          # إصلاح مصفوفات الـ SDK
           find SDK/ -type f \( -name "*.hpp" -o -name "*.h" \) -exec sed -i '' -E 's/return buffer\[([0-9]+)\];/return buffer[\1-1];/g' {} +
           
           echo "📝 Final Setup..."
@@ -49,24 +46,23 @@ jobs:
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/source/dobby/common/ 2>/dev/null || true
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/logging/* Dobby/source/dobby/logging/ 2>/dev/null || true
 
-      - name: Compile iOS dylib (FORCE MODE)
+      - name: Compile iOS dylib (System STL Mode)
         run: |
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           
-          # استبعاد شامل للملفات التي لم تعد موجودة أو بها مشاكل
+          # استبعاد شامل للملفات التي لم تعد موجودة
           SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
             | grep -vE "test|Test|example|Example|tests|Tests|x86|x64|TinySTL-master|Detail|Profiler")
 
           echo "🔍 Files to be compiled: $(echo "$SOURCES" | wc -l) files."
 
-          # 🚀 الأعلام القوية (Force Flags):
-          # -w: تجاهل كافة التحذيرات (Warnings)
-          # -fpermissive: إجبار المترجم على تجاهل أخطاء الـ Templates القاتلة
+          # 🚀 استخدام -stdlib=libc++ لاستخدام مكتبة النظام الأصلية
           clang++ -arch arm64 -dynamiclib -std=c++17 -w -fpermissive \
+            -stdlib=libc++ \
             -isysroot "$SDK_PATH" \
             -miphoneos-version-min=14.0 \
             -O3 -fobjc-arc -fvisibility=hidden \
-            -I. -IDobby/include -IDobby/source -IDobby/TINYSTL \
+            -I. -IDobby/include -IDobby/source \
             -I./SDK -I./KittyMemory -I./ESP \
             $SOURCES \
             -framework Foundation -framework UIKit -framework Security -lc++ -ldl \
