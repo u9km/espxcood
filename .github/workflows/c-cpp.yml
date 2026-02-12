@@ -17,6 +17,10 @@ jobs:
         run: |
           mkdir -p build
           
+          # إعداد بيئة النظام لتجاهل أخطاء الترميز في sed
+          export LC_ALL=C
+          export LANG=C
+          
           echo "📦 Extracting files..."
           unzip -q ESP.zip && unzip -q KittyMemory.zip && unzip -q SDK.zip
           unzip -q Dobby-master.zip && unzip -q TinySTL-master.zip
@@ -26,17 +30,16 @@ jobs:
           mkdir -p Dobby/TINYSTL
           cp -r TinySTL-master/include/* Dobby/TINYSTL/ 2>/dev/null || cp -r TinySTL-master/* Dobby/TINYSTL/
           
-          echo "🤖 AI-Driven Source Repair..."
-          # 1. إصلاح خطأ 'typename' في ملف Algorithm.h الخاص بـ TinySTL
+          echo "🤖 AI-Driven Source Repair (Bypassing Illegal Bytes)..."
+          # 1. إصلاح 'typename' في Algorithm.h
           find Dobby/TINYSTL -name "Algorithm.h" -exec sed -i '' 's/typedef iterator_traits/typedef typename iterator_traits/g' {} +
           
-          # 2. إصلاح خطأ 'shadows template parameter' في ملف ReverseIterator.h
-          # سنقوم بتغيير اسم الـ Iterator الداخلي لتجنب التعارض
+          # 2. إصلاح 'shadowing' في ReverseIterator.h
           find Dobby/TINYSTL -name "ReverseIterator.h" -exec sed -i '' 's/template <class Iterator>/template <class Iter_Inner>/g' {} +
 
-          # 3. إصلاح مصفوفات الـ SDK (الخطأ السابق)
+          # 3. إصلاح مصفوفات الـ SDK (باستخدام LC_ALL لتجنب الخطأ السابق)
           find SDK/ -type f \( -name "*.hpp" -o -name "*.h" \) -exec sed -i '' -E 's/return buffer\[([0-9]+)\];/return buffer[\1-1];/g' {} +
-
+          
           echo "📝 Finalizing configuration..."
           printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif" > substrate.h
 
@@ -49,7 +52,7 @@ jobs:
         run: |
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           
-          # استبعاد مجلدات الاختبارات تماماً لأنها تحتوي على أخطاء برمجية لا تهمنا
+          # تصفية ملفات السورس
           SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
             | grep -v "/Test/" \
             | grep -v "/Tests/" \
