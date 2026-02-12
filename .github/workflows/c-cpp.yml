@@ -13,7 +13,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Prepare and Auto-Fix SDK
+      - name: Prepare and Auto-Fix
         run: |
           mkdir -p build
           
@@ -24,37 +24,35 @@ jobs:
           echo "📂 Organizing Dobby..."
           mv Dobby-master Dobby
           mkdir -p Dobby/TINYSTL
+          # نقل ملفات include فقط لتجنب ملفات الاختبارات
           cp -r TinySTL-master/include/* Dobby/TINYSTL/ 2>/dev/null || cp -r TinySTL-master/* Dobby/TINYSTL/
           
-          echo "🤖 AI-Driven SDK Auto-Fixing..."
-          # 1. إصلاح شامل لكافة المصفوفات التي تحاول الوصول لعنصر خارج حدودها (مثل buffer[25] في مصفوفة 25)
-          # هذا السطر يبحث في كل ملفات SDK ويصحح النمط برمجياً
+          echo "🤖 AI-Driven SDK Auto-Fix..."
+          # إصلاح المصفوفات في الـ SDK
           find SDK/ -type f \( -name "*.hpp" -o -name "*.h" \) -exec sed -i '' -E 's/return buffer\[([0-9]+)\];/return buffer[\1-1];/g' {} +
           
-          # 2. إصلاح أي تعريفات متكررة أو فارغة قد تسبب مشاكل
-          find SDK/ -type f \( -name "*.hpp" -o -name "*.h" \) -exec sed -i '' 's/unsigned char UnknownData00\[0x1\];/char UnknownData00;/g' {} +
-
           echo "📝 Finalizing configuration..."
           printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif" > substrate.h
 
-          # تجهيز Resolvers
+          # تجهيز Resolvers لـ Dobby
           mkdir -p Dobby/source/dobby/common Dobby/source/dobby/logging
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/source/dobby/common/ 2>/dev/null || true
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/logging/* Dobby/source/dobby/logging/ 2>/dev/null || true
 
-      - name: Compile iOS dylib (Force Mode)
+      - name: Compile iOS dylib (Strict Source Selection)
         run: |
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           
+          # 🚀 التعديل الجوهري: استبعاد مجلدات الاختبارات (Test) والأمثلة (Example) تماماً
           SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
-            | grep -v "Dobby/example" | grep -v "Dobby/tests" \
+            | grep -v "Test" \
+            | grep -v "example" \
+            | grep -v "Dobby/tests" \
             | grep -v "source/InstructionRelocation/x86" \
             | grep -v "source/TrampolineBridge/x86" \
             | grep -v "TinySTL-master")
 
-          # استخدام أعلام (Flags) قوية لإجبار المترجم على المضي قدماً:
-          # -w: كتم كافة التحذيرات
-          # -fpermissive: السماح ببعض التجاوزات البرمجية غير القياسية
+          # استخدام -w لتجاهل التحذيرات و -fpermissive للتسامح مع أخطاء الـ SDK
           clang++ -arch arm64 -dynamiclib -std=c++17 -w -fpermissive \
             -isysroot "$SDK_PATH" \
             -miphoneos-version-min=14.0 \
