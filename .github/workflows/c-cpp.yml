@@ -13,7 +13,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Prepare and Ultimate Fix
+      - name: Prepare and Precision Fix
         run: |
           mkdir -p build
           export LC_ALL=C
@@ -28,37 +28,44 @@ jobs:
           mkdir -p Dobby/TINYSTL
           cp -r TinySTL-master/include/* Dobby/TINYSTL/ 2>/dev/null || cp -r TinySTL-master/* Dobby/TINYSTL/
           
-          echo "🤖 Deep Cleaning & Repairing Source..."
-          # 1. إصلاح خطأ 'typename' المفقود في ملفات TinySTL
-          find Dobby/TINYSTL -type f -name "*.h" -exec sed -i '' 's/typedef iterator_traits/typedef typename iterator_traits/g' {} +
+          echo "🧹 Cleaning Noise..."
+          # حذف المجلدات التي تسبب أخطاء ولا نحتاجها في البناء
+          rm -rf Dobby/tests Dobby/example TinySTL-master/Test
           
-          # 2. حل مشكلة الـ Shadowing بتغيير شامل لاسم Iterator في ملف ReverseIterator.h
-          # سنحول كل كلمة Iterator إلى Iter_T لتجنب التعارض البرمجي
+          echo "🤖 Precision Source Repair..."
+          
+          # 1. إصلاح ReverseIterator.h (تغيير Iterator إلى Iter_T فقط في القوالب لتجنب كسر الـ include)
           if [ -f "Dobby/TINYSTL/TINYSTL/ReverseIterator.h" ]; then
-            sed -i '' 's/Iterator/Iter_T/g' Dobby/TINYSTL/TINYSTL/ReverseIterator.h
+            sed -i '' 's/template <class Iterator>/template <class Iter_T>/g' Dobby/TINYSTL/TINYSTL/ReverseIterator.h
+            sed -i '' 's/reverse_iterator_t<Iterator>/reverse_iterator_t<Iter_T>/g' Dobby/TINYSTL/TINYSTL/ReverseIterator.h
           fi
 
-          # 3. إصلاح مصفوفات الـ SDK (التي تسبب خروج عن الحدود)
+          # 2. إصلاح Utility.h (تغيير T1/T2 المتعارضة إلى U1/U2)
+          if [ -f "Dobby/TINYSTL/TINYSTL/Utility.h" ]; then
+            sed -i '' 's/template <class T1, class T2>/template <class U1, class U2>/g' Dobby/TINYSTL/TINYSTL/Utility.h
+          fi
+
+          # 3. إصلاح Algorithm.h (إضافة typename المفقودة)
+          find Dobby/TINYSTL -name "Algorithm.h" -exec sed -i '' 's/typedef iterator_traits/typedef typename iterator_traits/g' {} +
+          find Dobby/TINYSTL -name "Algorithm.h" -exec sed -i '' 's/less<TinySTL::iterator_traits/less<typename TinySTL::iterator_traits/g' {} +
+
+          # 4. إصلاح مصفوفات الـ SDK
           find SDK/ -type f \( -name "*.hpp" -o -name "*.h" \) -exec sed -i '' -E 's/return buffer\[([0-9]+)\];/return buffer[\1-1];/g' {} +
           
-          echo "📝 Creating substrate.h..."
+          echo "📝 Final Setup..."
           printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif" > substrate.h
 
-          # تجهيز Resolvers
           mkdir -p Dobby/source/dobby/common Dobby/source/dobby/logging
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/source/dobby/common/ 2>/dev/null || true
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/logging/* Dobby/source/dobby/logging/ 2>/dev/null || true
 
-      - name: Compile iOS dylib (Force Strict Source)
+      - name: Compile iOS dylib
         run: |
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           
-          # 🚀 التعديل الأهم: استبعاد كل ما هو غير ضروري بشكل صارم
-          # سنحذف أي ملف يحتوي مساره على كلمة test أو example أو x86
+          # استبعاد شامل للملفات غير الضرورية
           SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
             | grep -vE "test|Test|example|Example|tests|Tests|x86|x64|TinySTL-master")
-
-          echo "🔍 Files to be compiled: $(echo "$SOURCES" | wc -l) files."
 
           clang++ -arch arm64 -dynamiclib -std=c++17 -w -fpermissive \
             -isysroot "$SDK_PATH" \
