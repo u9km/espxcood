@@ -41,9 +41,6 @@ jobs:
 
           ninja
 
-          # تأكد أن المكتبة موجودة
-          ls -lah
-
       - name: Create substrate shim
         run: |
           printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif" > substrate.h
@@ -53,7 +50,7 @@ jobs:
           set -e
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
 
-          SOURCES=$(find . -maxdepth 3 \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
+          SOURCES=$(find . -maxdepth 5 \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
             | grep -v Dobby)
 
           clang++ -arch arm64 \
@@ -65,9 +62,11 @@ jobs:
             -fobjc-arc \
             -I./Dobby/include \
             $SOURCES \
-            build_dobby/libdobby.a \
+            build_dobby/lib/libdobby.a \
             -framework Foundation \
             -framework UIKit \
+            -framework Security \
+            -framework CoreImage \
             -lc++ \
             -ldl \
             -o ShadowCheats.dylib
