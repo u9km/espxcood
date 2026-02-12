@@ -1,18 +1,3 @@
-name: Build Stable Non-JB iOS dylib
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [ "main", "master" ]
-
-jobs:
-  build:
-    runs-on: macos-14
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
       - name: Prepare and Ultimate Source Repair
         run: |
           mkdir -p build
@@ -36,6 +21,12 @@ jobs:
           
           echo "🤖 Precision Source Repair (Patching Dobby & SDK)..."
           
+          # 🚀🚀 الإضافة الجديدة هنا: إضافة cstddef إلى ملفات TinySTL الأساسية 🚀🚀
+          find Dobby/TINYSTL -name "allocator.h" -exec sed -i '' '1s/^/#include <cstddef>\n/' {} +
+          find Dobby/TINYSTL -name "hash.h" -exec sed -i '' '1s/^/#include <cstddef>\n/' {} +
+          find Dobby/TINYSTL -name "string.h" -exec sed -i '' '1s/^/#include <cstddef>\n/' {} +
+          # -----------------------------------------------------------------------------
+
           # 1. إصلاح ReverseIterator.h (الاسم)
           find Dobby/TINYSTL -name "ReverseIterator.h" -exec sed -i '' 's/Iterator/Iter_T/g' {} +
           find Dobby/TINYSTL -name "ReverseIterator.h" -exec sed -i '' 's/"Iter_T.h"/"Iterator.h"/g' {} +
@@ -62,34 +53,3 @@ jobs:
           mkdir -p Dobby/source/dobby/common Dobby/source/dobby/logging
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/source/dobby/common/ 2>/dev/null || true
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/logging/* Dobby/source/dobby/logging/ 2>/dev/null || true
-
-      - name: Compile iOS dylib
-        run: |
-          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
-          
-          # 🔍 تعديل شامل للـ Sources: حذف فقط المجلدات المكررة أو ملفات Test
-          SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
-            | grep -vE "test|Test|example|Example|tests|Tests|x86|x64|TinySTL_Temp")
-
-          echo "🔍 Files to be compiled: $(echo "$SOURCES" | wc -l) files."
-
-          # 🚀 إضافة مسارات Includes دقيقة
-          clang++ -arch arm64 -dynamiclib -std=c++17 -w -fpermissive \
-            -isysroot "$SDK_PATH" \
-            -miphoneos-version-min=14.0 \
-            -O3 -fobjc-arc -fvisibility=hidden \
-            -I. \
-            -IDobby/include \
-            -IDobby/source \
-            -IDobby/TINYSTL \
-            -IDobby/TINYSTL/TINYSTL \
-            -I./SDK -I./KittyMemory -I./ESP \
-            $SOURCES \
-            -framework Foundation -framework UIKit -framework Security -lc++ -ldl \
-            -o build/ShadowCheats.dylib
-
-      - name: Upload Result 📦
-        uses: actions/upload-artifact@v4
-        with:
-          name: ShadowCheats_dylib
-          path: build/ShadowCheats.dylib
