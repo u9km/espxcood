@@ -111,6 +111,7 @@ jobs:
             -IDobby/source/dobby \
             -IDobby/source/Backend/UserMode/ExecMemory \
             -IDobby/source/Backend/UserMode/MultiThreadSupport \
+            -IDobby/source/InstructionRelocation \
             \
             $SOURCES \
             \
