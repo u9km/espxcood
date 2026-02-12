@@ -17,27 +17,41 @@ jobs:
         run: |
           mkdir -p build
           
-          # 1. فك ضغط الملفات المحلية الموجودة في مستودعك (إن وجدت)
+          # 1. فك ضغط الملفات المحلية (إن وجدت)
           [ -f "ESP.zip" ] && unzip -q ESP.zip
           [ -f "KittyMemory.zip" ] && unzip -q KittyMemory.zip
           [ -f "SDK.zip" ] && unzip -q SDK.zip
           
-          # 2. تحميل مكتبة Dobby كاملة
-          echo "📥 Downloading Dobby Source..."
+          # 2. تحميل Dobby Source (الرابط الذي نجح معك سابقاً)
+          echo "📥 Downloading Dobby..."
           curl -L -o dobby_src.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
           unzip -q dobby_src.zip
           mv Dobby-master Dobby
           echo "✅ Dobby prepared."
-          
-          # 3. تحميل TinySTL باستخدام curl (لتجنب خطأ git clone)
+
+          # 3. تحميل TinySTL (محاولة تحميل ذكية)
           echo "📥 Downloading TinySTL..."
+          # محاولة تحميل فرع master أولاً، ثم main إذا فشل
           curl -L -o tinystl_src.zip https://github.com/kov4l3nko/TinySTL/archive/refs/heads/master.zip
+          
+          # فحص حجم الملف، إذا كان صغيراً جداً (خطأ)، نجرب رابطاً آخر
+          FILESIZE=$(stat -f%z "tinystl_src.zip")
+          if [ "$FILESIZE" -lt 1000 ]; then
+            echo "⚠️ Master branch not found, trying Main branch..."
+            curl -L -o tinystl_src.zip https://github.com/kov4l3nko/TinySTL/archive/refs/heads/main.zip
+          fi
+          
           unzip -q tinystl_src.zip
+          # التعامل مع اختلاف اسم المجلد الناتج (TinySTL-master أو TinySTL-main)
           mkdir -p Dobby/TINYSTL
-          cp -r TinySTL-master/include/* Dobby/TINYSTL/
+          if [ -d "TinySTL-master" ]; then
+            cp -r TinySTL-master/include/* Dobby/TINYSTL/
+          elif [ -d "TinySTL-main" ]; then
+            cp -r TinySTL-main/include/* Dobby/TINYSTL/
+          fi
           echo "✅ TinySTL prepared."
 
-          # 4. إنشاء ملف substrate.h (بصيغة متوافقة مع YAML)
+          # 4. إنشاء ملف substrate.h (بصيغة متوافقة مع YAML لضمان عدم حدوث خطأ السطر 69)
           printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif" > substrate.h
 
           # 5. تجهيز مسارات الـ Resolver لـ Dobby
@@ -54,7 +68,7 @@ jobs:
         run: |
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           
-          # البحث عن ملفات السورس مع استبعاد ملفات x86
+          # البحث عن ملفات السورس مع استبعاد ملفات x86 ومعالجة المسارات
           SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
             | grep -v "Dobby/example" | grep -v "Dobby/tests" \
             | grep -v "source/InstructionRelocation/x86" \
