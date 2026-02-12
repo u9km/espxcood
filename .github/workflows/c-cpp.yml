@@ -22,18 +22,17 @@ jobs:
           if [ -f "kittymemory.zip" ]; then unzip -q kittymemory.zip; fi
           if [ -f "sdk.zip" ]; then unzip -q sdk.zip; fi
           
-          # 2. تحميل Dobby
+          # 2. تحميل محرك Hooking (Dobby)
           echo "📥 Downloading Dobby..."
           curl -L -o dobby.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
           if [ -s dobby.zip ]; then
+            unzip -q dobby.zip
+            mv Dobby-master Dobby
             echo "✅ Dobby downloaded successfully."
           else
             echo "❌ Failed to download Dobby."
             exit 1
           fi
-          echo "📂 Unzipping Dobby..."
-          unzip -q dobby.zip
-          mv Dobby-master Dobby
 
           # 3. تحميل TinySTL
           echo "📥 Downloading TinySTL..."
@@ -42,6 +41,7 @@ jobs:
             unzip -q TinySTL.zip
             mkdir -p Dobby/TINYSTL
             cp -r TinySTL-master/include/* Dobby/TINYSTL/
+            echo "✅ TinySTL downloaded successfully."
           else
             echo "❌ Failed to download TinySTL."
             exit 1
@@ -53,10 +53,10 @@ jobs:
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/source/dobby/common/
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/logging/* Dobby/source/dobby/logging/
 
-          # 5. تحميل fishhook
+          # 5. تحميل مكتبة fishhook
           curl -L -o fishhook.h https://raw.githubusercontent.com/facebook/fishhook/master/fishhook.h
 
-          # 6. إنشاء Substrate Faux
+          # 6. إنشاء Substrate Faux بشكل صحيح
           cat <<EOF > substrate.h
 #ifndef SUBSTRATE_H
 #define SUBSTRATE_H
@@ -75,36 +75,41 @@ EOF
 
           # 7. إصلاح KittyMemory
           if [ -f "KittyMemory/KittyMemory.cpp" ]; then
-            sed -i '' 's/sprintf(&buffer\[i \* 2\], "%02X", (unsigned char) temp\[i\]);/snprintf(\&buffer\[i \* 2\], 3, "%02X", (unsigned char) temp\[i\]);/g' KittyMemory/KittyMemory.cpp
+            sed -i '' 's/sprintf(&buffer\[i \* 2\], "%02X", (unsigned char) temp\[i\]);/snprintf(&buffer\[i \* 2\], 3, "%02X", (unsigned char) temp\[i\]);/g' KittyMemory/KittyMemory.cpp
           fi
 
-          # 8. إصلاح pointer arithmetic في Dobby
+          # 8. إصلاح Pointer Arithmetic في Dobby
           if [ -f "Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c" ]; then
             sed -i '' 's/sys_icache_invalidate(start, end - start);/sys_icache_invalidate((void *)start, (char *)end - (char *)start);/g' Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c
           fi
 
-          # 9. إصلاح SDK
+          # 9. إصلاحات SDK التلقائية
           if [ -f "SDK/PUBGM_SAQER_CoreUObject_structs.hpp" ]; then
             sed -i '' 's/char buffer\[25\];/char buffer\[26\];/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
             sed -i '' 's/(const char\*)(int)/(const char*)(uintptr_t)/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
           fi
           if [ -f "SDK/PUBGM_SAQER_Basic.hpp" ]; then
             sed -i '' 's/{ std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/{ static std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/g' SDK/PUBGM_SAQER_Basic.hpp
+            sed -i '' 's/return convert.to_bytes(std::u16string(Data, Data + Count)).c_str();/{ static std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/g' SDK/PUBGM_SAQER_Basic.hpp
           fi
 
       - name: Compile dylib with Best Practices
         run: |
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          
+          echo "🔍 Searching for source files..."
           SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
             | grep -v "Dobby/example" \
             | grep -v "Dobby/tests" \
             | grep -v "Dobby/source/InstructionRelocation/x86" \
             | grep -v "Dobby/source/TrampolineBridge/x86")
+          
           if [ -z "$SOURCES" ]; then
             echo "❌ No source files found!"
             exit 1
           fi
-          
+
+          echo "🚀 Compiling..."
           clang++ \
             -arch arm64 \
             -dynamiclib \
@@ -122,6 +127,7 @@ EOF
             -Wno-unused-value \
             -Wno-null-conversion \
             -Wno-deprecated-declarations \
+            \
             -I. \
             -I./SDK \
             -I./KittyMemory \
@@ -133,13 +139,17 @@ EOF
             -IDobby/source/Backend/UserMode/ExecMemory \
             -IDobby/source/Backend/UserMode/MultiThreadSupport \
             -IDobby/TINYSTL \
+            \
             $SOURCES \
+            \
             -framework Foundation \
             -framework UIKit \
             -framework CoreGraphics \
             -framework Security \
+            \
             -lc++ \
             -ldl \
+            \
             -o build/ShadowCheats.dylib
 
       - name: Upload Artifact
