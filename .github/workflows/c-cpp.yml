@@ -18,14 +18,27 @@ jobs:
       - name: Clone Dobby
         run: git clone --depth=1 https://github.com/jmpews/Dobby.git
 
-      - name: Build Dobby Static Manually (Stable)
+      - name: Prepare Dobby (ARM64 Only)
+        run: |
+          set -e
+
+          # حذف معماريات غير مطلوبة
+          rm -rf Dobby/source/InstructionRelocation/x86
+          rm -rf Dobby/source/InstructionRelocation/x64
+          rm -rf Dobby/source/Backend/KernelMode
+          rm -f Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c
+
+          # TinySTL path fix
+          mkdir -p Dobby/TINYSTL
+          cp -r Dobby/external/TinySTL/* Dobby/TINYSTL/
+
+      - name: Build Dobby Static (ARM64 iOS)
         run: |
           set -e
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
 
           mkdir -p build_dobby
 
-          # جمع سورسات Dobby فقط (بدون tests / examples)
           DOBBY_SOURCES=$(find Dobby/source \
             -name "*.cpp" -o -name "*.c" -o -name "*.mm")
 
@@ -40,9 +53,11 @@ jobs:
             -IDobby/source \
             -IDobby/source/Backend \
             -IDobby/source/Backend/UserMode \
+            -IDobby/source/InstructionRelocation/arm64 \
             -IDobby/builtin-plugin \
             -IDobby/builtin-plugin/SymbolResolver \
-            -IDobby/builtin-plugin/SymbolResolver/macho
+            -IDobby/builtin-plugin/SymbolResolver/macho \
+            -IDobby/TINYSTL
 
           ar rcs build_dobby/libdobby.a *.o
           rm -f *.o
@@ -82,4 +97,3 @@ jobs:
         with:
           name: ShadowCheats_dylib
           path: ShadowCheats.dylib
-        
