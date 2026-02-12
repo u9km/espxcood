@@ -23,7 +23,6 @@ jobs:
 
           mkdir -p build
 
-          echo "Extracting archives..."
           unzip -q ESP.zip || true
           unzip -q KittyMemory.zip || true
           unzip -q SDK.zip || true
@@ -54,14 +53,6 @@ jobs:
             cp -r TinySTL/* Dobby/TINYSTL/
           fi
 
-          find Dobby/TINYSTL -type f -name "*.h" -exec \
-            sed -i '' '1i\
-#include <cstddef>\
-#include <cstdint>\
-using std::size_t;\
-using std::ptrdiff_t;\
-' {} +
-
           mkdir -p Dobby/common
           mkdir -p Dobby/logging
           cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/common/ 2>/dev/null || true
@@ -77,11 +68,9 @@ using std::ptrdiff_t;\
           set -e
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
 
-          echo "Collecting source files..."
           SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
             | grep -vE "test|Test|example|Example|tests|Tests|x86|x64|Profiler")
 
-          echo "Building dylib..."
           clang++ -arch arm64 \
             -dynamiclib \
             -std=c++17 \
@@ -113,8 +102,6 @@ using std::ptrdiff_t;\
             -lc++ \
             -ldl \
             -o build/ShadowCheats.dylib
-
-          echo "Build finished successfully."
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
