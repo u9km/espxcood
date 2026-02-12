@@ -20,72 +20,72 @@ jobs:
           export LANG=C
           
           echo "📦 Extracting files..."
-          unzip -q ESP.zip && unzip -q KittyMemory.zip && unzip -q SDK.zip
+          unzip -q ESP.zip
+          unzip -q KittyMemory.zip
+          unzip -q SDK.zip
           unzip -q Dobby-master.zip
-          
-          # فك ضغط TinySTL إلى مجلد مؤقت
-          mkdir -p TinySTL_Temp
-          unzip -q TinySTL-master.zip -d TinySTL_Temp
+          unzip -q TinySTL-master.zip
           
           echo "📂 Organizing Dobby and TinySTL..."
           mv Dobby-master Dobby
+          mv TinySTL-master TinySTL
+          
           mkdir -p Dobby/TINYSTL
-          
-          # نسخ ملفات TinySTL بعناية إلى المسار الصحيح
-          cp -r TinySTL_Temp/*/include/* Dobby/TINYSTL/ 2>/dev/null || cp -r TinySTL_Temp/* Dobby/TINYSTL/ 2>/dev/null || true
-          
-          echo "🤖 Precision Source Repair (Patching Dobby & SDK)..."
-          
-          # 1. نقل الملفات المفقودة من الـ plugin إلى الـ source
-          mkdir -p Dobby/source/dobby/common Dobby/source/dobby/logging
-          cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/source/dobby/common/ 2>/dev/null || true
-          cp -r Dobby/builtin-plugin/SymbolResolver/macho/logging/* Dobby/source/dobby/logging/ 2>/dev/null || true
+          cp -r TinySTL/include/* Dobby/TINYSTL/
 
-          # 2. إصلاح ReverseIterator.h (الاسم)
-          find Dobby/TINYSTL -name "ReverseIterator.h" -exec sed -i '' 's/Iterator/Iter_T/g' {} +
-          find Dobby/TINYSTL -name "ReverseIterator.h" -exec sed -i '' 's/"Iter_T.h"/"Iterator.h"/g' {} +
+          echo "🔧 Fix missing internal headers..."
+          
+          # إصلاح common و logging في مكانهم الصحيح
+          mkdir -p Dobby/common
+          mkdir -p Dobby/logging
+          
+          cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/common/ 2>/dev/null || true
+          cp -r Dobby/builtin-plugin/SymbolResolver/macho/logging/* Dobby/logging/ 2>/dev/null || true
 
-          # 3. إصلاح Utility.h (الرموز)
-          find Dobby/TINYSTL -name "Utility.h" -exec sed -i '' 's/template <class T1, class T2>/template <class U1, class U2>/g' {} +
-          find Dobby/TINYSTL -name "Utility.h" -exec sed -i '' 's/pair<T1, T2>/pair<U1, U2>/g' {} +
+          echo "🧠 Fix ThreadSupport include path..."
+          mkdir -p Dobby/source/Backend/UserMode/MultiThreadSupport
+          cp -r Dobby/source/Backend/UserMode/MultiThreadSupport/* Dobby/source/MultiThreadSupport/ 2>/dev/null || true
 
-          # 4. إصلاح Algorithm.h (الـ Typename والـ Memset)
+          echo "🛠 Fix TinySTL compatibility..."
+          
           find Dobby/TINYSTL -name "Algorithm.h" -exec sed -i '' 's/typedef iterator_traits/typedef typename iterator_traits/g' {} +
-          find Dobby/TINYSTL -name "Algorithm.h" -exec sed -i '' 's/less<TinySTL::iterator_traits/less<typename TinySTL::iterator_traits/g' {} +
           find Dobby/TINYSTL -name "Algorithm.h" -exec sed -i '' 's/memset/::memset/g' {} +
 
-          # 5. إصلاح مؤشرات void في clear-cache-tool-all.c
-          find Dobby/source -name "clear-cache-tool-all.c" -exec sed -i '' 's/sys_icache_invalidate(start, end - start);/sys_icache_invalidate((void *)start, (char *)end - (char *)start);/g' {} +
-
-          # 6. إصلاح مصفوفات الـ SDK
-          find SDK/ -type f \( -name "*.hpp" -o -name "*.h" \) -exec sed -i '' -E 's/return buffer\[([0-9]+)\];/return buffer[\1-1];/g' {} +
-          
-          echo "📝 Final Setup..."
+          echo "📝 Create substrate shim..."
           printf "#ifndef SUBSTRATE_H\n#define SUBSTRATE_H\n#include \"Dobby/include/dobby.h\"\n#include <mach-o/dyld.h>\n#include <dlfcn.h>\n#define MSHookFunction(symbol, replace, result) DobbyHook((void*)symbol, (void*)replace, (void**)result)\nstatic inline void* MSFindSymbol(void* image, const char* name) { return dlsym(RTLD_DEFAULT, name); }\n#endif" > substrate.h
 
       - name: Compile iOS dylib
         run: |
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           
-          # استبعاد شامل للملفات التي قد تسبب مشاكل (test, example, profiler)
+          # لا نستبعد builtin-plugin لأنه يحتوي ملفات يعتمد عليها Dobby
           SOURCES=$(find . \( -name "*.cpp" -o -name "*.mm" -o -name "*.c" \) \
-            | grep -vE "test|Test|example|Example|tests|Tests|x86|x64|TinySTL_Temp|Profiler|builtin-plugin")
+            | grep -vE "test|Test|example|Example|tests|Tests|x86|x64|TinySTL-master|Profiler")
 
           echo "🔍 Files to be compiled: $(echo "$SOURCES" | wc -l) files."
 
-          # 🚀 إضافة مسارات Includes دقيقة
           clang++ -arch arm64 -dynamiclib -std=c++17 -w -fpermissive \
             -isysroot "$SDK_PATH" \
             -miphoneos-version-min=14.0 \
             -O3 -fobjc-arc -fvisibility=hidden \
             -I. \
+            -IDobby \
             -IDobby/include \
             -IDobby/source \
+            -IDobby/source/Backend \
+            -IDobby/source/Backend/UserMode \
+            -IDobby/builtin-plugin \
+            -IDobby/builtin-plugin/SymbolResolver \
+            -IDobby/builtin-plugin/SymbolResolver/macho \
             -IDobby/TINYSTL \
-            -IDobby/TINYSTL/TINYSTL \
-            -I./SDK -I./KittyMemory -I./ESP \
+            -I./SDK \
+            -I./KittyMemory \
+            -I./ESP \
             $SOURCES \
-            -framework Foundation -framework UIKit -framework Security -lc++ -ldl \
+            -framework Foundation \
+            -framework UIKit \
+            -framework Security \
+            -lc++ -ldl \
             -o build/ShadowCheats.dylib
 
       - name: Upload Result 📦
