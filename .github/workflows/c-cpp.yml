@@ -17,14 +17,13 @@ jobs:
         run: |
           mkdir -p build
           
-          # 1. فك ضغط المجلدات المحلية (تأكد من وجودها في المستودع)
+          # 1. فك ضغط المجلدات المضغوطة المحلية (تأكد من وجودها في المستودع)
           if [ -f "esp.zip" ]; then unzip -q esp.zip; fi
           if [ -f "kittymemory.zip" ]; then unzip -q kittymemory.zip; fi
           if [ -f "sdk.zip" ]; then unzip -q sdk.zip; fi
           
-          # 2. تحميل محرك Hooking (Dobby) - تحديث الرابط 🛠️
+          # 2. تحميل محرك Hooking (Dobby) - رابط الفرع الرئيسي 🛠️
           echo "📥 Downloading Dobby..."
-          # استخدام رابط الفرع الرئيسي لضمان وجوده
           wget -O dobby.zip https://github.com/jmpews/Dobby/archive/refs/heads/master.zip
           
           # التحقق من أن الملف تم تحميله بنجاح
@@ -40,10 +39,23 @@ jobs:
           # تحديث اسم المجلد ليطابق الفرع الرئيسي
           mv Dobby-master Dobby
 
-          # 3. تحميل مكتبة fishhook (تحتاجها KittyMemory)
+          # 3. تحميل مكتبة TinySTL الفعلية وتصحيح مسارات Dobby
+          echo "📥 Downloading TinySTL and setting up paths..."
+          git clone --depth 1 https://github.com/zyj1989/TinySTL.git
+          mkdir -p Dobby/TINYSTL
+          cp -r TinySTL/include/* Dobby/TINYSTL/
+          
+          # 🛠️ تصحيح المسارات: نسخ ملفات Resolver إلى أماكنها الصحيحة
+          mkdir -p Dobby/source/dobby/common
+          mkdir -p Dobby/source/dobby/logging
+          
+          cp -r Dobby/builtin-plugin/SymbolResolver/macho/common/* Dobby/source/dobby/common/
+          cp -r Dobby/builtin-plugin/SymbolResolver/macho/logging/* Dobby/source/dobby/logging/
+          
+          # 4. تحميل مكتبة fishhook (تحتاجها KittyMemory)
           curl -L -o fishhook.h https://raw.githubusercontent.com/facebook/fishhook/master/fishhook.h
           
-          # 4. خدعة الجلبريك (Fake Substrate Bridge + MSFindSymbol)
+          # 5. خدعة الجلبريك (Fake Substrate Bridge + MSFindSymbol)
           cat <<EOF > substrate.h
           #ifndef SUBSTRATE_H
           #define SUBSTRATE_H
@@ -60,29 +72,28 @@ jobs:
           #endif
           EOF
 
-          # 5. 🛠️ إصلاح خطأ sprintf في KittyMemory.cpp تلقائياً
+          # 6. 🛠️ إصلاح خطأ sprintf في KittyMemory.cpp تلقائياً
           if [ -f "KittyMemory/KittyMemory.cpp" ]; then
             sed -i '' 's/sprintf(&buffer\[i \* 2\], "%02X", (unsigned char) temp\[i\]);/snprintf(\&buffer\[i \* 2\], 3, "%02X", (unsigned char) temp\[i\]);/g' KittyMemory/KittyMemory.cpp
             echo "✅ KittyMemory.cpp patched successfully."
           fi
           
-          # 6. 🛠️ إصلاح خطأ Array Bounds في الـ SDK (حجم الـ Buffer)
-          if [ -f "SDK/PUBGM_SAQER_CoreUObject_structs.hpp" ]; then
-            sed -i '' 's/char buffer\[25\];/char buffer\[26\];/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
-            echo "✅ SDK Array Bounds patched successfully."
-          fi
-
-          # 7. 🛠️ إصلاح خطأ Cast to 'const char *' (int to pointer) في الـ SDK
-          if [ -f "SDK/PUBGM_SAQER_CoreUObject_structs.hpp" ]; then
-            sed -i '' 's/(const char\*)(int)/(const char*)(uintptr_t)/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
-            echo "✅ SDK Cast to 'const char *' patched successfully."
+          # 7. 🛠️ إصلاح خطأ Pointer Arithmetic في Dobby (لـ arm64)
+          if [ -f "Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c" ]; then
+            sed -i '' 's/sys_icache_invalidate(start, end - start);/sys_icache_invalidate((void *)start, (char *)end - (char *)start);/g' Dobby/source/Backend/UserMode/ExecMemory/clear-cache-tool-all.c
+            echo "✅ Dobby patched successfully."
           fi
           
-          # 8. 🛠️ إصلاح خطأ Returning address of local temporary object (Static memory)
+          # 8. 🛠️ إصلاحات الـ SDK التلقائية (sed patches)
+          if [ -f "SDK/PUBGM_SAQER_CoreUObject_structs.hpp" ]; then
+            sed -i '' 's/char buffer\[25\];/char buffer\[26\];/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
+            sed -i '' 's/(const char\*)(int)/(const char*)(uintptr_t)/g' SDK/PUBGM_SAQER_CoreUObject_structs.hpp
+            echo "✅ SDK Patched successfully."
+          fi
           if [ -f "SDK/PUBGM_SAQER_Basic.hpp" ]; then
             sed -i '' 's/{ std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/{ static std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/g' SDK/PUBGM_SAQER_Basic.hpp
             sed -i '' 's/return convert.to_bytes(std::u16string(Data, Data + Count)).c_str();/{ static std::string temp = convert.to_bytes(std::u16string(Data, Data + Count)); return temp.c_str(); }/g' SDK/PUBGM_SAQER_Basic.hpp
-            echo "✅ SDK Returning address patched successfully."
+            echo "✅ SDK Patched successfully."
           fi
 
       - name: Compile dylib with Best Practices
@@ -103,6 +114,7 @@ jobs:
 
           echo "🚀 Compiling with optimizations..."
           
+          # 🛠️ تجميع متكامل مع أفضل ممارسات الاستقرار والذاكرة
           clang++ \
             -arch arm64 \
             -dynamiclib \
@@ -116,6 +128,9 @@ jobs:
             -fno-rtti \
             -fno-exceptions \
             -Wno-error \
+            -Wno-multichar \
+            -Wno-unused-value \
+            -Wno-null-conversion \
             -Wno-deprecated-declarations \
             \
             -I. \
@@ -124,10 +139,11 @@ jobs:
             -I./ESP \
             -IDobby/include \
             -IDobby/source \
+            -IDobby/builtin-plugin/SymbolResolver \
             -IDobby/source/dobby \
             -IDobby/source/Backend/UserMode/ExecMemory \
             -IDobby/source/Backend/UserMode/MultiThreadSupport \
-            -IDobby/source/InstructionRelocation \
+            -IDobby/TINYSTL \
             \
             $SOURCES \
             \
