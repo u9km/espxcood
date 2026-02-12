@@ -75,11 +75,13 @@ jobs:
 
           # 🚀 إضافة مسارات Includes دقيقة واستخدام std=c++17 مع libc++
           clang++ -arch arm64 -dynamiclib -std=c++17 -w -fpermissive \
-            -stdlib=libc++ \
             -isysroot "$SDK_PATH" \
+            -stdlib=libc++ \
             -miphoneos-version-min=14.0 \
             -O3 -fobjc-arc -fvisibility=hidden \
             -I. \
+            -I"$SDK_PATH/usr/include" \
+            -I"$SDK_PATH/usr/include/c++/v1" \
             -IDobby/include \
             -IDobby/source \
             -IDobby/TINYSTL \
